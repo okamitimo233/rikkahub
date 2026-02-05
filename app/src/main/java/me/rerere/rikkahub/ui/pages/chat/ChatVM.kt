@@ -37,6 +37,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantAffectScope
 import me.rerere.rikkahub.data.model.Avatar
@@ -46,10 +47,9 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
+import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
-import me.rerere.rikkahub.utils.createChatFilesByContents
-import me.rerere.rikkahub.utils.deleteChatFiles
 import me.rerere.rikkahub.utils.toLocalString
 import java.time.LocalDate
 import java.time.ZoneId
@@ -66,10 +66,14 @@ class ChatVM(
     private val chatService: ChatService,
     val updateChecker: UpdateChecker,
     private val analytics: FirebaseAnalytics,
+    private val filesManager: FilesManager,
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
     var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
+
+    // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
+    val inputState = ChatInputState()
 
     // 异步任务 (从ChatService获取，响应式)
     val conversationJob: StateFlow<Job?> =
@@ -226,7 +230,7 @@ class ChatVM(
         val newAvatar = newSettings.displaySetting.userAvatar
 
         if (oldAvatar is Avatar.Image && oldAvatar != newAvatar) {
-            context.deleteChatFiles(listOf(oldAvatar.url.toUri()))
+            filesManager.deleteChatFiles(listOf(oldAvatar.url.toUri()))
         }
     }
 
@@ -342,6 +346,20 @@ class ChatVM(
         }
     }
 
+    fun handleCompressContext(additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int): Job {
+        return viewModelScope.launch {
+            chatService.compressConversation(
+                _conversationId,
+                conversation.value,
+                additionalPrompt,
+                targetTokens,
+                keepRecentMessages
+            ).onFailure {
+                chatService.addError(it)
+            }
+        }
+    }
+
     suspend fun forkMessage(message: UIMessage): Conversation {
         val node = conversation.value.getMessageNodeByMessage(message)
         val nodes = conversation.value.messageNodes.subList(
@@ -356,7 +374,7 @@ class ChatVM(
                                 is UIMessagePart.Image -> {
                                     val url = part.url
                                     if (url.startsWith("file:")) {
-                                        val copied = context.createChatFilesByContents(
+                                        val copied = filesManager.createChatFilesByContents(
                                             listOf(url.toUri())
                                         ).firstOrNull()
                                         if (copied != null) part.copy(url = copied.toString()) else part
@@ -366,7 +384,7 @@ class ChatVM(
                                 is UIMessagePart.Document -> {
                                     val url = part.url
                                     if (url.startsWith("file:")) {
-                                        val copied = context.createChatFilesByContents(
+                                        val copied = filesManager.createChatFilesByContents(
                                             listOf(url.toUri())
                                         ).firstOrNull()
                                         if (copied != null) part.copy(url = copied.toString()) else part
@@ -376,7 +394,7 @@ class ChatVM(
                                 is UIMessagePart.Video -> {
                                     val url = part.url
                                     if (url.startsWith("file:")) {
-                                        val copied = context.createChatFilesByContents(
+                                        val copied = filesManager.createChatFilesByContents(
                                             listOf(url.toUri())
                                         ).firstOrNull()
                                         if (copied != null) part.copy(url = copied.toString()) else part
@@ -386,7 +404,7 @@ class ChatVM(
                                 is UIMessagePart.Audio -> {
                                     val url = part.url
                                     if (url.startsWith("file:")) {
-                                        val copied = context.createChatFilesByContents(
+                                        val copied = filesManager.createChatFilesByContents(
                                             listOf(url.toUri())
                                         ).firstOrNull()
                                         if (copied != null) part.copy(url = copied.toString()) else part
@@ -410,9 +428,7 @@ class ChatVM(
     }
 
     fun deleteMessage(message: UIMessage) {
-        val relatedMessages = collectRelatedMessages(message)
         deleteMessageInternal(message)
-        relatedMessages.forEach { deleteMessageInternal(it) }
         saveConversationAsync()
     }
 
@@ -448,35 +464,21 @@ class ChatVM(
         }
     }
 
-    private fun collectRelatedMessages(message: UIMessage): List<UIMessage> {
-        val currentMessages = conversation.value.currentMessages
-        val index = currentMessages.indexOf(message)
-        if (index == -1) return emptyList()
-
-        val relatedMessages = hashSetOf<UIMessage>()
-        for (i in index - 1 downTo 0) {
-            if (currentMessages[i].hasPart<UIMessagePart.ToolCall>() || currentMessages[i].hasPart<UIMessagePart.ToolResult>()) {
-                relatedMessages.add(currentMessages[i])
-            } else {
-                break
-            }
-        }
-        for (i in index + 1 until currentMessages.size) {
-            if (currentMessages[i].hasPart<UIMessagePart.ToolCall>() || currentMessages[i].hasPart<UIMessagePart.ToolResult>()) {
-                relatedMessages.add(currentMessages[i])
-            } else {
-                break
-            }
-        }
-        return relatedMessages.toList()
-    }
-
     fun regenerateAtMessage(
         message: UIMessage,
         regenerateAssistantMsg: Boolean = true
     ) {
         analytics.logEvent("ai_regenerate_at_message", null)
         chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
+    }
+
+    fun handleToolApproval(
+        toolCallId: String,
+        approved: Boolean,
+        reason: String = ""
+    ) {
+        analytics.logEvent("ai_tool_approval", null)
+        chatService.handleToolApproval(_conversationId, toolCallId, approved, reason)
     }
 
     fun saveConversationAsync() {

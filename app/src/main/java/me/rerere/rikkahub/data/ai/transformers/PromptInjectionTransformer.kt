@@ -160,23 +160,27 @@ internal fun applyInjections(
     }
 
     // 处理 TOP_OF_CHAT：在第一条用户消息之前插入
-    val topContent = byPosition[InjectionPosition.TOP_OF_CHAT]
-        ?.joinToString("\n") { it.content }
-    if (!topContent.isNullOrEmpty()) {
+    val topInjections = byPosition[InjectionPosition.TOP_OF_CHAT]
+    if (!topInjections.isNullOrEmpty()) {
         // 重新计算索引（因为可能插入了系统消息）
         var insertIndex = result.indexOfFirst { it.role == MessageRole.USER }
             .takeIf { it >= 0 } ?: result.size
         insertIndex = findSafeInsertIndex(result, insertIndex)
-        result.add(insertIndex, UIMessage.user(wrapSystemTag(topContent)))
+        createMergedInjectionMessages(topInjections).forEach { message ->
+            result.add(insertIndex, message)
+            insertIndex++
+        }
     }
 
     // 处理 BOTTOM_OF_CHAT：在最后一条消息之前插入
-    val bottomContent = byPosition[InjectionPosition.BOTTOM_OF_CHAT]
-        ?.joinToString("\n") { it.content }
-    if (!bottomContent.isNullOrEmpty()) {
+    val bottomInjections = byPosition[InjectionPosition.BOTTOM_OF_CHAT]
+    if (!bottomInjections.isNullOrEmpty()) {
         var insertIndex = (result.size - 1).coerceAtLeast(0)
         insertIndex = findSafeInsertIndex(result, insertIndex)
-        result.add(insertIndex, UIMessage.user(wrapSystemTag(bottomContent)))
+        createMergedInjectionMessages(bottomInjections).forEach { message ->
+            result.add(insertIndex, message)
+            insertIndex++
+        }
     }
 
     // 处理 AT_DEPTH：在指定深度位置插入（从最新消息往前数）
@@ -185,12 +189,15 @@ internal fun applyInjections(
     if (!atDepthInjections.isNullOrEmpty()) {
         val byDepth = atDepthInjections.groupBy { it.injectDepth }
         byDepth.keys.sortedDescending().forEach { depth ->
-            val content = byDepth[depth]?.joinToString("\n") { it.content } ?: return@forEach
+            val injections = byDepth[depth] ?: return@forEach
             // 计算插入位置：result.size - depth，但要确保在有效范围内
             // depth=1 表示在最后一条消息之前，depth=2 表示在倒数第二条之前...
             var insertIndex = (result.size - depth).coerceIn(0, result.size)
             insertIndex = findSafeInsertIndex(result, insertIndex)
-            result.add(insertIndex, UIMessage.user(wrapSystemTag(content)))
+            createMergedInjectionMessages(injections).forEach { message ->
+                result.add(insertIndex, message)
+                insertIndex++
+            }
         }
     }
 
@@ -198,9 +205,25 @@ internal fun applyInjections(
 }
 
 /**
+ * 将同一 role 的注入合并成消息列表
+ * 按 role 分组后合并内容，返回合并后的消息列表
+ */
+private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
+    return injections
+        .groupBy { it.role }
+        .map { (role, grouped) ->
+            val mergedContent = grouped.joinToString("\n") { it.content }
+            when (role) {
+                MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
+                else -> UIMessage.user(wrapSystemTag(mergedContent))
+            }
+        }
+}
+
+/**
  * 查找安全的插入位置，避免破坏工具调用链
  *
- * 工具调用链的结构：ASSISTANT(ToolCall) -> TOOL(ToolResult)
+ * 工具调用链的结构：ASSISTANT(未执行的Tool) -> ASSISTANT(已执行的Tool)
  * 不能在这两者之间插入消息
  */
 internal fun findSafeInsertIndex(messages: List<UIMessage>, targetIndex: Int): Int {
@@ -212,10 +235,9 @@ internal fun findSafeInsertIndex(messages: List<UIMessage>, targetIndex: Int): I
         val currentMessage = messages.getOrNull(index)
 
         // 检查是否在工具调用链中间
-        // 如果前一条是包含 ToolCall 的消息，当前是包含 ToolResult 的 TOOL 消息
-        val isPrevToolCall = prevMessage?.getToolCalls()?.isNotEmpty() == true
-        val isCurrentToolResult = currentMessage?.role == MessageRole.TOOL &&
-            currentMessage.getToolResults().isNotEmpty()
+        // 如果前一条包含未执行的 Tool，当前包含已执行的 Tool
+        val isPrevToolCall = prevMessage?.getTools()?.any { !it.isExecuted } == true
+        val isCurrentToolResult = currentMessage?.getTools()?.any { it.isExecuted } == true
 
         if (isPrevToolCall && isCurrentToolResult) {
             // 在工具调用链中间，需要继续往前找

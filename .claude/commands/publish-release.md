@@ -4,6 +4,7 @@
 
 - 查看从上一次release tag到当前commit的修改
 - 总结更新内容并生成更新日志, BUG修复和UI调整尽可能合并，确保总更新日志条目数量不超过 10条
+- 日志中避免出现技术名词
 
 使用以下格式:
 
@@ -25,7 +26,8 @@ Updates:
 
 ## 发布
 
-使用github cli创建release, 并上传 app/release/xxx.apk 文件 (仅上传arm64版本)
+使用github cli创建release, 并上传 app/release/xxx.apk 文件
 
-- 标题使用版本号
-- 描述使用更新日志
+- 仅上传arm64版本, 上传前重命名apk，添加版本号到文件名内
+- release标题使用版本号
+- release描述使用更新日志

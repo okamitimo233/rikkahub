@@ -46,6 +46,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
@@ -55,14 +58,17 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -91,16 +97,17 @@ import androidx.core.net.toFile
 import androidx.core.net.toUri
 import coil3.compose.AsyncImage
 import com.composables.icons.lucide.ArrowUp
-import com.composables.icons.lucide.Camera
 import com.composables.icons.lucide.BookOpen
+import com.composables.icons.lucide.Camera
 import com.composables.icons.lucide.Eraser
+import com.composables.icons.lucide.FileArchive
 import com.composables.icons.lucide.FileAudio
 import com.composables.icons.lucide.Files
 import com.composables.icons.lucide.Fullscreen
-import com.composables.icons.lucide.GraduationCap
 import com.composables.icons.lucide.Image
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Music
+import com.composables.icons.lucide.Package2
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.Video
 import com.composables.icons.lucide.X
@@ -108,6 +115,7 @@ import com.composables.icons.lucide.Zap
 import com.dokar.sonner.ToastType
 import com.yalantis.ucrop.UCrop
 import com.yalantis.ucrop.UCropActivity
+import kotlinx.coroutines.Job
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
@@ -120,21 +128,19 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
-import me.rerere.rikkahub.ui.components.ui.FormItem
 import me.rerere.rikkahub.ui.components.ui.InjectionSelector
 import me.rerere.rikkahub.ui.components.ui.KeepScreenOn
+import me.rerere.rikkahub.ui.components.ui.RandomGridLoading
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
-import me.rerere.rikkahub.utils.createChatFilesByContents
-import me.rerere.rikkahub.utils.deleteChatFiles
-import me.rerere.rikkahub.utils.getFileMimeType
-import me.rerere.rikkahub.utils.getFileNameFromUri
+import org.koin.compose.koinInject
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
@@ -157,11 +163,13 @@ fun ChatInput(
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
     onClearContext: () -> Unit,
+    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job,
     onCancelClick: () -> Unit,
     onSendClick: () -> Unit,
     onLongSendClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val filesManager: FilesManager = koinInject()
     val toaster = LocalToaster.current
     val assistant = settings.getCurrentAssistant()
 
@@ -178,8 +186,12 @@ fun ChatInput(
     }
 
     var expand by remember { mutableStateOf(ExpandState.Collapsed) }
+    var showInjectionSheet by remember { mutableStateOf(false) }
+    var showCompressDialog by remember { mutableStateOf(false) }
     fun dismissExpand() {
         expand = ExpandState.Collapsed
+        showInjectionSheet = false
+        showCompressDialog = false
     }
 
     fun expandToggle(type: ExpandState) {
@@ -192,9 +204,9 @@ fun ChatInput(
 
     // Collapse when ime is visible
     val imeVisile = WindowInsets.isImeVisible
-    LaunchedEffect(imeVisile) {
-        if (imeVisile) {
-            expand = ExpandState.Collapsed
+    LaunchedEffect(imeVisile, showInjectionSheet, showCompressDialog) {
+        if (imeVisile && !showInjectionSheet && !showCompressDialog) {
+            dismissExpand()
         }
     }
 
@@ -211,7 +223,11 @@ fun ChatInput(
             MediaFileInputRow(state = state, context = context)
 
             // Text Input Row
-            TextInputRow(state = state, context = context)
+            TextInputRow(
+                state = state,
+                context = context,
+                onSendMessage = { sendMessage() }
+            )
 
             // Actions Row
             Row(
@@ -307,11 +323,11 @@ fun ChatInput(
                         .combinedClickable(
                             enabled = state.loading || !state.isEmpty(),
                             onClick = {
-                                expand = ExpandState.Collapsed
+                                dismissExpand()
                                 sendMessage()
                             },
                             onLongClick = {
-                                expand = ExpandState.Collapsed
+                                dismissExpand()
                                 sendMessageWithoutAnswer()
                             }
                         )
@@ -362,7 +378,12 @@ fun ChatInput(
                             state = state,
                             assistant = assistant,
                             onClearContext = onClearContext,
+                            onCompressContext = onCompressContext,
                             onUpdateAssistant = onUpdateAssistant,
+                            showInjectionSheet = showInjectionSheet,
+                            onShowInjectionSheetChange = { showInjectionSheet = it },
+                            showCompressDialog = showCompressDialog,
+                            onShowCompressDialogChange = { showCompressDialog = it },
                             onDismiss = { dismissExpand() }
                         )
                     }
@@ -376,8 +397,11 @@ fun ChatInput(
 private fun TextInputRow(
     state: ChatInputState,
     context: Context,
+    onSendMessage: () -> Unit,
 ) {
-    val assistant = LocalSettings.current.getCurrentAssistant()
+    val settings = LocalSettings.current
+    val filesManager: FilesManager = koinInject()
+    val assistant = settings.getCurrentAssistant()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -417,7 +441,7 @@ private fun TextInputRow(
                 }
                 var isFocused by remember { mutableStateOf(false) }
                 var isFullScreen by remember { mutableStateOf(false) }
-                val receiveContentListener = remember {
+                val receiveContentListener = remember(settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold) {
                     ReceiveContentListener { transferableContent ->
                         when {
                             transferableContent.hasMediaType(MediaType.Image) -> {
@@ -425,7 +449,7 @@ private fun TextInputRow(
                                     val uri = item.uri
                                     if (uri != null) {
                                         state.addImages(
-                                            context.createChatFilesByContents(
+                                            filesManager.createChatFilesByContents(
                                                 listOf(
                                                     uri
                                                 )
@@ -433,6 +457,20 @@ private fun TextInputRow(
                                         )
                                     }
                                     uri != null
+                                }
+                            }
+
+                            settings.displaySetting.pasteLongTextAsFile &&
+                                transferableContent.hasMediaType(MediaType.Text) -> {
+                                transferableContent.consume { item ->
+                                    val text = item.text?.toString()
+                                    if (text != null && text.length > settings.displaySetting.pasteLongTextThreshold) {
+                                        val document = filesManager.createChatTextFile(text)
+                                        state.addFiles(listOf(document))
+                                        true
+                                    } else {
+                                        false
+                                    }
                                 }
                             }
 
@@ -453,6 +491,14 @@ private fun TextInputRow(
                         Text(stringResource(R.string.chat_input_placeholder))
                     },
                     lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = if (settings.displaySetting.sendOnEnter) ImeAction.Send else ImeAction.Default
+                    ),
+                    onKeyboardAction = {
+                        if (settings.displaySetting.sendOnEnter && !state.isEmpty()) {
+                            onSendMessage()
+                        }
+                    },
                     colors = TextFieldDefaults.colors().copy(
                         unfocusedIndicatorColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
@@ -540,6 +586,7 @@ private fun MediaFileInputRow(
     state: ChatInputState,
     context: Context
 ) {
+    val filesManager: FilesManager = koinInject()
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
@@ -571,7 +618,7 @@ private fun MediaFileInputRow(
                             state.messageContent =
                                 state.messageContent.filterNot { it == image }
                             // Delete image
-                            context.deleteChatFiles(listOf(image.url.toUri()))
+                            filesManager.deleteChatFiles(listOf(image.url.toUri()))
                         }
                         .align(Alignment.TopEnd)
                         .background(MaterialTheme.colorScheme.secondary),
@@ -604,7 +651,7 @@ private fun MediaFileInputRow(
                             state.messageContent =
                                 state.messageContent.filterNot { it == video }
                             // Delete image
-                            context.deleteChatFiles(listOf(video.url.toUri()))
+                            filesManager.deleteChatFiles(listOf(video.url.toUri()))
                         }
                         .align(Alignment.TopEnd)
                         .background(MaterialTheme.colorScheme.secondary),
@@ -637,7 +684,7 @@ private fun MediaFileInputRow(
                             state.messageContent =
                                 state.messageContent.filterNot { it == audio }
                             // Delete image
-                            context.deleteChatFiles(listOf(audio.url.toUri()))
+                            filesManager.deleteChatFiles(listOf(audio.url.toUri()))
                         }
                         .align(Alignment.TopEnd)
                         .background(MaterialTheme.colorScheme.secondary),
@@ -682,7 +729,7 @@ private fun MediaFileInputRow(
                                 state.messageContent =
                                     state.messageContent.filterNot { it == document }
                                 // Delete image
-                                context.deleteChatFiles(listOf(document.url.toUri()))
+                                filesManager.deleteChatFiles(listOf(document.url.toUri()))
                             }
                             .align(Alignment.TopEnd)
                             .background(MaterialTheme.colorScheme.secondary),
@@ -699,12 +746,16 @@ private fun FilesPicker(
     assistant: Assistant,
     state: ChatInputState,
     onClearContext: () -> Unit,
+    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job,
     onUpdateAssistant: (Assistant) -> Unit,
+    showInjectionSheet: Boolean,
+    onShowInjectionSheetChange: (Boolean) -> Unit,
+    showCompressDialog: Boolean,
+    onShowCompressDialogChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val settings = LocalSettings.current
     val provider = settings.getCurrentChatModel()?.findProvider(providers = settings.providers)
-    var showInjectionSheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -775,10 +826,28 @@ private fun FilesPicker(
                 modifier = Modifier
                     .clip(MaterialTheme.shapes.large)
                     .clickable {
-                        showInjectionSheet = true
+                        onShowInjectionSheetChange(true)
                     },
             )
         }
+
+        // Compress History Button
+        ListItem(
+            leadingContent = {
+                Icon(
+                    imageVector = Lucide.Package2,
+                    contentDescription = stringResource(R.string.chat_page_compress_context),
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.chat_page_compress_context))
+            },
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.large)
+                .clickable {
+                    onShowCompressDialogChange(true)
+                },
+        )
 
         ListItem(
             leadingContent = {
@@ -822,7 +891,20 @@ private fun FilesPicker(
             assistant = assistant,
             settings = settings,
             onUpdateAssistant = onUpdateAssistant,
-            onDismiss = { showInjectionSheet = false }
+            onDismiss = { onShowInjectionSheetChange(false) }
+        )
+    }
+
+    // Compress Context Dialog
+    if (showCompressDialog) {
+        CompressContextDialog(
+            onDismiss = {
+                onShowCompressDialogChange(false)
+                onDismiss()
+            },
+            onConfirm = { additionalPrompt, targetTokens, keepRecentMessages ->
+                onCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
+            }
         )
     }
 }
@@ -941,10 +1023,11 @@ private fun useCropLauncher(
 private fun ImagePickButton(onAddImages: (List<Uri>) -> Unit = {}) {
     val context = LocalContext.current
     val settings = LocalSettings.current
+    val filesManager: FilesManager = koinInject()
 
     val (_, launchCrop) = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
-            onAddImages(context.createChatFilesByContents(listOf(croppedUri)))
+            onAddImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
         }
     )
 
@@ -956,7 +1039,7 @@ private fun ImagePickButton(onAddImages: (List<Uri>) -> Unit = {}) {
             // Check if we should skip crop based on settings
             if (settings.displaySetting.skipCropImage) {
                 // Skip crop, directly add images
-                onAddImages(context.createChatFilesByContents(selectedUris))
+                onAddImages(filesManager.createChatFilesByContents(selectedUris))
             } else {
                 // Show crop interface
                 if (selectedUris.size == 1) {
@@ -964,7 +1047,7 @@ private fun ImagePickButton(onAddImages: (List<Uri>) -> Unit = {}) {
                     launchCrop(selectedUris.first())
                 } else {
                     // Multiple images - no crop
-                    onAddImages(context.createChatFilesByContents(selectedUris))
+                    onAddImages(filesManager.createChatFilesByContents(selectedUris))
                 }
             }
         } else {
@@ -990,12 +1073,13 @@ fun TakePicButton(onAddImages: (List<Uri>) -> Unit = {}) {
 
     val context = LocalContext.current
     val settings = LocalSettings.current
+    val filesManager: FilesManager = koinInject()
     var cameraOutputUri by remember { mutableStateOf<Uri?>(null) }
     var cameraOutputFile by remember { mutableStateOf<File?>(null) }
 
     val (_, launchCrop) = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
-            onAddImages(context.createChatFilesByContents(listOf(croppedUri)))
+            onAddImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
         },
         onCleanup = {
             // Clean up camera temp file after cropping is done
@@ -1012,7 +1096,7 @@ fun TakePicButton(onAddImages: (List<Uri>) -> Unit = {}) {
             // Check if we should skip crop based on settings
             if (settings.displaySetting.skipCropImage) {
                 // Skip crop, directly add image
-                onAddImages(context.createChatFilesByContents(listOf(cameraOutputUri!!)))
+                onAddImages(filesManager.createChatFilesByContents(listOf(cameraOutputUri!!)))
                 // Clean up camera temp file
                 cameraOutputFile?.delete()
                 cameraOutputFile = null
@@ -1061,11 +1145,12 @@ fun TakePicButton(onAddImages: (List<Uri>) -> Unit = {}) {
 @Composable
 fun VideoPickButton(onAddVideos: (List<Uri>) -> Unit = {}) {
     val context = LocalContext.current
+    val filesManager: FilesManager = koinInject()
     val videoPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { selectedUris ->
         if (selectedUris.isNotEmpty()) {
-            onAddVideos(context.createChatFilesByContents(selectedUris))
+            onAddVideos(filesManager.createChatFilesByContents(selectedUris))
         }
     }
 
@@ -1084,11 +1169,12 @@ fun VideoPickButton(onAddVideos: (List<Uri>) -> Unit = {}) {
 @Composable
 fun AudioPickButton(onAddAudios: (List<Uri>) -> Unit = {}) {
     val context = LocalContext.current
+    val filesManager: FilesManager = koinInject()
     val audioPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { selectedUris ->
         if (selectedUris.isNotEmpty()) {
-            onAddAudios(context.createChatFilesByContents(selectedUris))
+            onAddAudios(filesManager.createChatFilesByContents(selectedUris))
         }
     }
 
@@ -1108,6 +1194,7 @@ fun AudioPickButton(onAddAudios: (List<Uri>) -> Unit = {}) {
 fun FilePickButton(onAddFiles: (List<UIMessagePart.Document>) -> Unit = {}) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val filesManager: FilesManager = koinInject()
     val pickMedia =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             if (uris.isNotEmpty()) {
@@ -1130,8 +1217,8 @@ fun FilePickButton(onAddFiles: (List<UIMessagePart.Document>) -> Unit = {}) {
                 )
 
                 val documents = uris.mapNotNull { uri ->
-                    val fileName = context.getFileNameFromUri(uri) ?: "file"
-                    val mime = context.getFileMimeType(uri) ?: "text/plain"
+                    val fileName = filesManager.getFileNameFromUri(uri) ?: "file"
+                    val mime = filesManager.getFileMimeType(uri) ?: "text/plain"
 
                     // Filter by MIME type or file extension
                     val isAllowed = allowedMimeTypes.contains(mime) ||
@@ -1158,7 +1245,7 @@ fun FilePickButton(onAddFiles: (List<UIMessagePart.Document>) -> Unit = {}) {
                         fileName.endsWith(".yaml", ignoreCase = true)
 
                     if (isAllowed) {
-                        val localUri = context.createChatFilesByContents(listOf(uri))[0]
+                        val localUri = filesManager.createChatFilesByContents(listOf(uri))[0]
                         UIMessagePart.Document(
                             url = localUri.toString(),
                             fileName = fileName,

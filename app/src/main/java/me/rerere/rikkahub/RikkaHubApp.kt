@@ -3,6 +3,8 @@ package me.rerere.rikkahub
 import android.app.Application
 import android.util.Log
 import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.runtime.Composer
+import androidx.compose.runtime.tooling.ComposeStackTraceMode
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
@@ -19,6 +21,7 @@ import me.rerere.rikkahub.di.appModule
 import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
 import me.rerere.rikkahub.di.viewModelModule
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.utils.DatabaseUtil
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
@@ -29,6 +32,7 @@ import org.koin.core.context.startKoin
 private const val TAG = "RikkaHubApp"
 
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
+const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 
 class RikkaHubApp : Application() {
     override fun onCreate() {
@@ -47,6 +51,9 @@ class RikkaHubApp : Application() {
         // delete temp files
         deleteTempFiles()
 
+        // sync upload files to DB
+        syncManagedFiles()
+
         // Init remote config
         get<FirebaseRemoteConfig>().apply {
             setConfigSettingsAsync(remoteConfigSettings {
@@ -56,8 +63,7 @@ class RikkaHubApp : Application() {
             fetchAndActivate()
         }
 
-        // https://issuetracker.google.com/issues/469669851
-        ComposeFoundationFlags.isPausableCompositionInPrefetchEnabled = false
+        // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
     }
 
     private fun deleteTempFiles() {
@@ -65,6 +71,16 @@ class RikkaHubApp : Application() {
             val dir = appTempFolder
             if (dir.exists()) {
                 dir.deleteRecursively()
+            }
+        }
+    }
+
+    private fun syncManagedFiles() {
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                get<FilesManager>().syncFolder()
+            }.onFailure {
+                Log.e(TAG, "syncManagedFiles failed", it)
             }
         }
     }
@@ -80,6 +96,16 @@ class RikkaHubApp : Application() {
             .setVibrationEnabled(true)
             .build()
         notificationManager.createNotificationChannel(chatCompletedChannel)
+
+        val chatLiveUpdateChannel = NotificationChannelCompat
+            .Builder(
+                CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID,
+                NotificationManagerCompat.IMPORTANCE_LOW
+            )
+            .setName(getString(R.string.notification_channel_chat_live_update))
+            .setVibrationEnabled(false)
+            .build()
+        notificationManager.createNotificationChannel(chatLiveUpdateChannel)
     }
 
     override fun onTerminate() {

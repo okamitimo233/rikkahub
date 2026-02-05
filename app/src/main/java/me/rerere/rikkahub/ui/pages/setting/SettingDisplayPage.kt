@@ -152,7 +152,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
 
             stickyHeader {
                 Text(
-                    text = stringResource(R.string.setting_page_basic_settings),
+                    text = stringResource(R.string.setting_page_general_settings),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -227,6 +227,28 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                 )
             }
 
+            if (displaySetting.enableNotificationOnMessageGeneration) {
+                item {
+                    ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_display_page_live_update_notification))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_display_page_live_update_notification_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enableLiveUpdateNotification,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(enableLiveUpdateNotification = it))
+                                }
+                            )
+                        },
+                    )
+                }
+            }
+
 //            item {
 //                ListItem(
 //                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -249,7 +271,7 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
 
             stickyHeader {
                 Text(
-                    text = stringResource(R.string.setting_page_chat_settings),
+                    text = stringResource(R.string.setting_page_message_display_settings),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -270,6 +292,26 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                             checked = displaySetting.showUserAvatar,
                             onCheckedChange = {
                                 updateDisplaySetting(displaySetting.copy(showUserAvatar = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_show_assistant_bubble_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_show_assistant_bubble_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.showAssistantBubble,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(showAssistantBubble = it))
                             }
                         )
                     },
@@ -358,83 +400,47 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
 
             item {
                 ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = {
-                        Text(stringResource(R.string.setting_display_page_show_message_jumper_title))
+                        Text(stringResource(R.string.setting_display_page_font_size_title))
                     },
-                    supportingContent = {
-                        Text(stringResource(R.string.setting_display_page_show_message_jumper_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = displaySetting.showMessageJumper,
-                            onCheckedChange = {
-                                updateDisplaySetting(displaySetting.copy(showMessageJumper = it))
-                            }
-                        )
-                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
-            }
-
-            if (displaySetting.showMessageJumper) {
-                item {
-                    ListItem(
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        headlineContent = {
-                            Text(stringResource(R.string.setting_display_page_message_jumper_position_title))
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Slider(
+                        value = displaySetting.fontSizeRatio,
+                        onValueChange = {
+                            updateDisplaySetting(displaySetting.copy(fontSizeRatio = it))
                         },
-                        supportingContent = {
-                            Text(stringResource(R.string.setting_display_page_message_jumper_position_desc))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.messageJumperOnLeft,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(messageJumperOnLeft = it))
-                                }
-                            )
-                        },
+                        valueRange = 0.5f..2f,
+                        steps = 11,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(displaySetting.fontSizeRatio * 100).toInt()}%",
                     )
                 }
-            }
-
-            item {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = {
-                        Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_title))
-                    },
-                    supportingContent = {
-                        Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = displaySetting.enableMessageGenerationHapticEffect,
-                            onCheckedChange = {
-                                updateDisplaySetting(displaySetting.copy(enableMessageGenerationHapticEffect = it))
-                            }
-                        )
-                    },
+                MarkdownBlock(
+                    content = stringResource(R.string.setting_display_page_font_size_preview),
+                    modifier = Modifier.padding(8.dp),
+                    style = LocalTextStyle.current.copy(
+                        fontSize = LocalTextStyle.current.fontSize * displaySetting.fontSizeRatio,
+                        lineHeight = LocalTextStyle.current.lineHeight * displaySetting.fontSizeRatio,
+                    )
                 )
             }
 
-            item {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    headlineContent = {
-                        Text(stringResource(R.string.setting_display_page_skip_crop_image_title))
-                    },
-                    supportingContent = {
-                        Text(stringResource(R.string.setting_display_page_skip_crop_image_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = displaySetting.skipCropImage,
-                            onCheckedChange = {
-                                updateDisplaySetting(displaySetting.copy(skipCropImage = it))
-                            }
-                        )
-                    },
+            stickyHeader {
+                Text(
+                    text = stringResource(R.string.setting_page_code_display_settings),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
 
@@ -498,40 +504,234 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                 )
             }
 
+            stickyHeader {
+                Text(
+                    text = stringResource(R.string.setting_page_interaction_notification_settings),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+
             item {
                 ListItem(
-                    headlineContent = {
-                        Text(stringResource(R.string.setting_display_page_font_size_title))
-                    },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_send_on_enter_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_send_on_enter_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.sendOnEnter,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(sendOnEnter = it))
+                            }
+                        )
+                    },
                 )
-                Row(
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Slider(
-                        value = displaySetting.fontSizeRatio,
-                        onValueChange = {
-                            updateDisplaySetting(displaySetting.copy(fontSizeRatio = it))
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_show_message_jumper_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_show_message_jumper_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.showMessageJumper,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(showMessageJumper = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            if (displaySetting.showMessageJumper) {
+                item {
+                    ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_display_page_message_jumper_position_title))
                         },
-                        valueRange = 0.5f..2f,
-                        steps = 11,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "${(displaySetting.fontSizeRatio * 100).toInt()}%",
+                        supportingContent = {
+                            Text(stringResource(R.string.setting_display_page_message_jumper_position_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.messageJumperOnLeft,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(messageJumperOnLeft = it))
+                                }
+                            )
+                        },
                     )
                 }
-                MarkdownBlock(
-                    content = stringResource(R.string.setting_display_page_font_size_preview),
-                    modifier = Modifier.padding(8.dp),
-                    style = LocalTextStyle.current.copy(
-                        fontSize = LocalTextStyle.current.fontSize * displaySetting.fontSizeRatio,
-                        lineHeight = LocalTextStyle.current.lineHeight * displaySetting.fontSizeRatio,
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_enable_auto_scroll_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_enable_auto_scroll_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.enableAutoScroll,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(enableAutoScroll = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_enable_message_generation_haptic_effect_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.enableMessageGenerationHapticEffect,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(enableMessageGenerationHapticEffect = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_skip_crop_image_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_skip_crop_image_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.skipCropImage,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(skipCropImage = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_paste_long_text_as_file_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_paste_long_text_as_file_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.pasteLongTextAsFile,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(pasteLongTextAsFile = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            if (displaySetting.pasteLongTextAsFile) {
+                item {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.setting_display_page_paste_long_text_threshold_title))
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Slider(
+                            value = displaySetting.pasteLongTextThreshold.toFloat(),
+                            onValueChange = {
+                                updateDisplaySetting(displaySetting.copy(pasteLongTextThreshold = it.toInt()))
+                            },
+                            valueRange = 100f..10000f,
+                            steps = 98,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "${displaySetting.pasteLongTextThreshold}",
+                        )
+                    }
+                }
+            }
+
+            stickyHeader {
+                Text(
+                    text = stringResource(R.string.setting_page_tts_settings),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_tts_only_read_quoted_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_tts_only_read_quoted_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.ttsOnlyReadQuoted,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(ttsOnlyReadQuoted = it))
+                            }
+                        )
+                    },
+                )
+            }
+
+            item {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_display_page_auto_play_tts_title))
+                    },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_display_page_auto_play_tts_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = displaySetting.autoPlayTTSAfterGeneration,
+                            onCheckedChange = {
+                                updateDisplaySetting(displaySetting.copy(autoPlayTTSAfterGeneration = it))
+                            }
+                        )
+                    },
                 )
             }
         }

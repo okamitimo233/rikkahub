@@ -21,7 +21,7 @@ import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.migrations.Migration_6_7
 import me.rerere.rikkahub.data.db.migrations.Migration_11_12
 import me.rerere.rikkahub.data.ai.mcp.McpManager
-import me.rerere.rikkahub.data.sync.WebdavSync
+import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import me.rerere.rikkahub.data.sync.S3Sync
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -73,6 +73,10 @@ val dataSourceModule = module {
         get<AppDatabase>().messageNodeDao()
     }
 
+    single {
+        get<AppDatabase>().managedFileDao()
+    }
+
     single { McpManager(settingsStore = get(), appScope = get()) }
 
     single {
@@ -97,11 +101,15 @@ val dataSourceModule = module {
             .followRedirects(true)
             .retryOnConnectionFailure(true)
             .addInterceptor { chain ->
-                val request = chain.request().newBuilder()
+                val originalRequest = chain.request()
+                val requestBuilder = originalRequest.newBuilder()
                     .addHeader(HttpHeaders.AcceptLanguage, acceptLang)
-                    .addHeader(HttpHeaders.UserAgent, "RikkaHub-Android/${BuildConfig.VERSION_NAME}")
-                    .build()
-                chain.proceed(request)
+
+                if (originalRequest.header(HttpHeaders.UserAgent) == null) {
+                    requestBuilder.addHeader(HttpHeaders.UserAgent, "RikkaHub-Android/${BuildConfig.VERSION_NAME}")
+                }
+
+                chain.proceed(requestBuilder.build())
             }
             .addInterceptor(RequestLoggingInterceptor())
             .addInterceptor(AIRequestInterceptor(remoteConfig = get()))
@@ -120,7 +128,12 @@ val dataSourceModule = module {
     }
 
     single {
-        WebdavSync(settingsStore = get(), json = get(), context = get())
+        WebDavSync(
+            settingsStore = get(),
+            json = get(),
+            context = get(),
+            httpClient = get()
+        )
     }
 
     single<HttpClient> {

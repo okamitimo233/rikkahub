@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.data.repository
 
-import android.content.Context
 import android.database.sqlite.SQLiteBlobTooBigException
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
@@ -11,23 +10,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.migrateToolNodes
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.utils.JsonInstant
-import me.rerere.rikkahub.utils.deleteChatFiles
 import java.time.Instant
 import kotlin.uuid.Uuid
 
 class ConversationRepository(
-    private val context: Context,
     private val conversationDAO: ConversationDAO,
     private val messageNodeDAO: MessageNodeDAO,
     private val database: AppDatabase,
+    private val filesManager: FilesManager,
 ) {
     companion object {
         private const val PAGE_SIZE = 20
@@ -161,7 +161,7 @@ class ConversationRepository(
                 conversationToConversationEntity(conversation)
             )
         }
-        context.deleteChatFiles(fullConversation.files)
+        filesManager.deleteChatFiles(fullConversation.files)
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {
@@ -237,20 +237,31 @@ class ConversationRepository(
             var offset = 0
             val pageSize = 64
             while (true) {
-                val page = messageNodeDAO.getNodesOfConversationPaged(conversationId, pageSize, offset)
+                val page = try {
+                    messageNodeDAO.getNodesOfConversationPaged(conversationId, pageSize, offset)
+                } catch (e: SQLiteBlobTooBigException) {
+                    e.printStackTrace()
+                    offset += pageSize
+                    continue
+                }
                 if (page.isEmpty()) break
                 page.forEach { entity ->
+                    val messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
                     nodes.add(
                         MessageNode(
                             id = Uuid.parse(entity.id),
-                            messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages),
+                            messages = messages,
                             selectIndex = entity.selectIndex
                         )
                     )
                 }
                 offset += page.size
             }
-            nodes
+            // Migrate legacy TOOL nodes by merging them into previous ASSISTANT nodes
+            nodes.migrateToolNodes(
+                getMessages = { it.messages },
+                setMessages = { node, msgs -> node.copy(messages = msgs) }
+            )
         }
     }
 

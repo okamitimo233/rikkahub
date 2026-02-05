@@ -29,13 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,20 +59,21 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.ai.ChatInput
+import me.rerere.ai.core.MessageRole
 import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.ui.context.LocalTTSState
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
-import me.rerere.rikkahub.ui.hooks.rememberChatInputState
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
-import me.rerere.rikkahub.utils.createChatFilesByContents
-import me.rerere.rikkahub.utils.getFileMimeType
 import me.rerere.rikkahub.utils.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
@@ -85,8 +84,8 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>) {
             parametersOf(id.toString())
         }
     )
+    val filesManager: FilesManager = koinInject()
     val navController = LocalNavController.current
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     val setting by vm.settings.collectAsStateWithLifecycle()
@@ -117,13 +116,16 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>) {
     val isBigScreen =
         windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
 
-    val inputState = rememberChatInputState(
-        message = remember(files) {
-            buildList {
-                val localFiles = context.createChatFilesByContents(files)
-                val contentTypes = files.mapNotNull { file ->
-                    context.getFileMimeType(file)
-                }
+    val inputState = vm.inputState
+
+    // 初始化输入状态（处理传入的 files 和 text 参数）
+    LaunchedEffect(files, text) {
+        if (files.isNotEmpty()) {
+            val localFiles = filesManager.createChatFilesByContents(files)
+            val contentTypes = files.mapNotNull { file ->
+                filesManager.getFileMimeType(file)
+            }
+            val parts = buildList {
                 localFiles.forEachIndexed { index, file ->
                     val type = contentTypes.getOrNull(index)
                     if (type?.startsWith("image/") == true) {
@@ -135,15 +137,18 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>) {
                     }
                 }
             }
-        },
-        textContent = remember(text) {
-            text?.base64Decode() ?: ""
+            inputState.messageContent = parts
         }
-    )
+        text?.base64Decode()?.let { decodedText ->
+            if (decodedText.isNotEmpty()) {
+                inputState.setMessageText(decodedText)
+            }
+        }
+    }
 
     val chatListState = rememberLazyListState()
     LaunchedEffect(vm) {
-        if(!vm.chatListInitialized) {
+        if (!vm.chatListInitialized && chatListState.layoutInfo.totalItemsCount > 0) {
             chatListState.scrollToItem(chatListState.layoutInfo.totalItemsCount)
             vm.chatListInitialized = true
         }
@@ -241,6 +246,8 @@ private fun ChatPageContent(
         inputState.loading = loadingJob != null
     }
 
+    TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
+
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
@@ -336,6 +343,9 @@ private fun ChatPageContent(
                     onClearContext = {
                         vm.handleMessageTruncate()
                     },
+                    onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
+                        vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
+                    },
                 )
             },
             containerColor = Color.Transparent,
@@ -394,6 +404,9 @@ private fun ChatPageContent(
                     scope.launch {
                         chatListState.animateScrollToItem(index)
                     }
+                },
+                onToolApproval = { toolCallId, approved, reason ->
+                    vm.handleToolApproval(toolCallId, approved, reason)
                 },
             )
         }

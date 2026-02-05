@@ -1,29 +1,29 @@
 package me.rerere.rikkahub.ui.components.message
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,11 +41,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.BookDashed
 import com.composables.icons.lucide.BookHeart
+import com.composables.icons.lucide.Check
+import com.composables.icons.lucide.Clipboard
+import com.composables.icons.lucide.ClipboardPaste
+import com.composables.icons.lucide.Clock
 import com.composables.icons.lucide.Earth
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Trash2
 import com.composables.icons.lucide.Wrench
+import com.composables.icons.lucide.X
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -54,160 +59,272 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.ai.ui.ToolApprovalState
+import me.rerere.ai.ui.UIMessagePart
+import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.highlight.HighlightText
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.ui.components.richtext.HighlightCodeBlock
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
+import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
+import me.rerere.rikkahub.ui.components.ui.DotLoading
 import me.rerere.rikkahub.ui.components.ui.Favicon
 import me.rerere.rikkahub.ui.components.ui.FaviconRow
 import me.rerere.rikkahub.ui.components.ui.FormItem
+import me.rerere.rikkahub.ui.components.ui.GridLoading
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.modifier.shimmer
+import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 import org.koin.compose.koinInject
 
 private object ToolNames {
-    const val CREATE_MEMORY = "create_memory"
-    const val EDIT_MEMORY = "edit_memory"
-    const val DELETE_MEMORY = "delete_memory"
+    const val MEMORY = "memory_tool"
     const val SEARCH_WEB = "search_web"
     const val SCRAPE_WEB = "scrape_web"
+    const val GET_TIME_INFO = "get_time_info"
+    const val CLIPBOARD = "clipboard_tool"
 }
 
-private fun getToolIcon(toolName: String) = when (toolName) {
-    ToolNames.CREATE_MEMORY, ToolNames.EDIT_MEMORY -> Lucide.BookHeart
-    ToolNames.DELETE_MEMORY -> Lucide.BookDashed
+private object MemoryActions {
+    const val CREATE = "create"
+    const val EDIT = "edit"
+    const val DELETE = "delete"
+}
+
+private object ClipboardActions {
+    const val READ = "read"
+    const val WRITE = "write"
+}
+
+private fun getToolIcon(toolName: String, action: String?) = when (toolName) {
+    ToolNames.MEMORY -> when (action) {
+        MemoryActions.CREATE, MemoryActions.EDIT -> Lucide.BookHeart
+        MemoryActions.DELETE -> Lucide.BookDashed
+        else -> Lucide.Wrench
+    }
+
     ToolNames.SEARCH_WEB -> Lucide.Search
     ToolNames.SCRAPE_WEB -> Lucide.Earth
+    ToolNames.GET_TIME_INFO -> Lucide.Clock
+    ToolNames.CLIPBOARD -> when (action) {
+        ClipboardActions.READ -> Lucide.Clipboard
+        ClipboardActions.WRITE -> Lucide.ClipboardPaste
+        else -> Lucide.Clipboard
+    }
     else -> Lucide.Wrench
 }
 
 private fun JsonElement?.getStringContent(key: String): String? =
-    this?.jsonObject?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
+    this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
 
 @Composable
-fun ToolCallItem(
-    toolName: String,
-    arguments: JsonElement,
-    content: JsonElement?,
+fun ChainOfThoughtScope.ChatMessageToolStep(
+    tool: UIMessagePart.Tool,
     loading: Boolean = false,
+    onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
 ) {
     var showResult by remember { mutableStateOf(false) }
-    Surface(
-        modifier = Modifier.animateContentSize(),
-        onClick = {
-            showResult = true
-        },
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .padding(vertical = 8.dp, horizontal = 16.dp)
-                .height(IntrinsicSize.Min)
-        ) {
+    var showDenyDialog by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(true) }
+    val isPending = tool.approvalState is ToolApprovalState.Pending
+    val isDenied = tool.approvalState is ToolApprovalState.Denied
+    val arguments = tool.inputAsJson()
+    val memoryAction = arguments.getStringContent("action")
+    val content = if (tool.isExecuted) {
+        runCatching {
+            JsonInstant.parseToJsonElement(
+                tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+            )
+        }.getOrElse { JsonObject(emptyMap()) }
+    } else {
+        null
+    }
+
+    val title = when (tool.toolName) {
+        ToolNames.MEMORY -> when (memoryAction) {
+            MemoryActions.CREATE -> stringResource(R.string.chat_message_tool_create_memory)
+            MemoryActions.EDIT -> stringResource(R.string.chat_message_tool_edit_memory)
+            MemoryActions.DELETE -> stringResource(R.string.chat_message_tool_delete_memory)
+            else -> stringResource(R.string.chat_message_tool_call_generic, tool.toolName)
+        }
+
+        ToolNames.SEARCH_WEB -> stringResource(
+            R.string.chat_message_tool_search_web,
+            arguments.getStringContent("query") ?: ""
+        )
+
+        ToolNames.SCRAPE_WEB -> stringResource(R.string.chat_message_tool_scrape_web)
+        ToolNames.GET_TIME_INFO -> stringResource(R.string.chat_message_tool_get_time)
+        ToolNames.CLIPBOARD -> when (memoryAction) {
+            ClipboardActions.READ -> stringResource(R.string.chat_message_tool_clipboard_read)
+            ClipboardActions.WRITE -> stringResource(R.string.chat_message_tool_clipboard_write)
+            else -> stringResource(R.string.chat_message_tool_call_generic, tool.toolName)
+        }
+        else -> stringResource(R.string.chat_message_tool_call_generic, tool.toolName)
+    }
+
+    // 判断是否有额外内容需要显示
+    val hasExtraContent = when (tool.toolName) {
+        ToolNames.MEMORY -> memoryAction in listOf(MemoryActions.CREATE, MemoryActions.EDIT) &&
+            content.getStringContent("content") != null
+        ToolNames.SEARCH_WEB -> content.getStringContent("answer") != null ||
+            (content?.jsonObject?.get("items")?.jsonArray?.isNotEmpty() == true)
+        ToolNames.SCRAPE_WEB -> arguments.getStringContent("url") != null
+        else -> false
+    } || isDenied
+
+    ControlledChainOfThoughtStep(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        icon = {
             if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 4.dp,
+                DotLoading(
+                    size = 10.dp
                 )
             } else {
                 Icon(
-                    imageVector = getToolIcon(toolName),
+                    imageVector = getToolIcon(tool.toolName, memoryAction),
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(16.dp),
                     tint = LocalContentColor.current.copy(alpha = 0.7f)
                 )
             }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = when (toolName) {
-                        ToolNames.CREATE_MEMORY -> stringResource(R.string.chat_message_tool_create_memory)
-                        ToolNames.EDIT_MEMORY -> stringResource(R.string.chat_message_tool_edit_memory)
-                        ToolNames.DELETE_MEMORY -> stringResource(R.string.chat_message_tool_delete_memory)
-                        ToolNames.SEARCH_WEB -> stringResource(
-                            R.string.chat_message_tool_search_web,
-                            arguments.getStringContent("query") ?: ""
+        },
+        label = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.shimmer(isLoading = loading),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        extra = if (isPending && onToolApproval != null) {
+            {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { showDenyDialog = true },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Lucide.X,
+                            contentDescription = stringResource(R.string.chat_message_tool_deny),
+                            modifier = Modifier.size(14.dp)
                         )
-
-                        ToolNames.SCRAPE_WEB -> stringResource(R.string.chat_message_tool_scrape_web)
-                        else -> stringResource(
-                            R.string.chat_message_tool_call_generic,
-                            toolName
-                        )
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.shimmer(isLoading = loading),
-                )
-                if (toolName == ToolNames.CREATE_MEMORY || toolName == ToolNames.EDIT_MEMORY) {
-                    content.getStringContent("content")?.let { memoryContent ->
-                        Text(
-                            text = memoryContent,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.shimmer(isLoading = loading),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
+                    }
+                    FilledTonalIconButton(
+                        onClick = { onToolApproval(tool.toolCallId, true, "") },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = Lucide.Check,
+                            contentDescription = stringResource(R.string.chat_message_tool_approve),
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
-                if (toolName == ToolNames.SEARCH_WEB) {
-                    content.getStringContent("answer")?.let { answer ->
-                        Text(
-                            text = answer,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.shimmer(isLoading = loading),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    val items = content?.jsonObject?.get("items")?.jsonArray ?: emptyList()
-                    if (items.isNotEmpty()) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            FaviconRow(
-                                urls = items.mapNotNull { it.getStringContent("url") },
-                                size = 18.dp,
-                            )
+            }
+        } else {
+            null
+        },
+        onClick = if (content != null || isPending) {
+            { showResult = true }
+        } else {
+            null
+        },
+        content = if (hasExtraContent) {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (tool.toolName == ToolNames.MEMORY &&
+                        memoryAction in listOf(MemoryActions.CREATE, MemoryActions.EDIT)
+                    ) {
+                        content.getStringContent("content")?.let { memoryContent ->
                             Text(
-                                text = stringResource(R.string.chat_message_tool_search_results_count, items.size),
+                                text = memoryContent,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.shimmer(isLoading = loading),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
-                }
-                if (toolName == ToolNames.SCRAPE_WEB) {
-                    val url = arguments.getStringContent("url") ?: ""
-                    Text(
-                        text = url,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                    )
+                    if (tool.toolName == ToolNames.SEARCH_WEB) {
+                        content.getStringContent("answer")?.let { answer ->
+                            Text(
+                                text = answer,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.shimmer(isLoading = loading),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        val items = content?.jsonObject?.get("items")?.jsonArray ?: emptyList()
+                        if (items.isNotEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                FaviconRow(
+                                    urls = items.mapNotNull { it.getStringContent("url") },
+                                    size = 18.dp,
+                                )
+                                Text(
+                                    text = stringResource(R.string.chat_message_tool_search_results_count, items.size),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                )
+                            }
+                        }
+                    }
+                    if (tool.toolName == ToolNames.SCRAPE_WEB) {
+                        val url = arguments.getStringContent("url") ?: ""
+                        Text(
+                            text = url,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                        )
+                    }
+                    if (isDenied) {
+                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                        Text(
+                            text = stringResource(R.string.chat_message_tool_denied) +
+                                if (reason.isNotBlank()) ": $reason" else "",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
             }
-        }
+        } else {
+            null
+        },
+    )
+
+    if (showDenyDialog && onToolApproval != null) {
+        ToolDenyReasonDialog(
+            onDismiss = { showDenyDialog = false },
+            onConfirm = { reason ->
+                showDenyDialog = false
+                onToolApproval(tool.toolCallId, false, reason)
+            }
+        )
     }
-    if (showResult && content != null) {
+
+    if (showResult) {
         ToolCallPreviewSheet(
-            toolName = toolName,
+            toolName = tool.toolName,
             arguments = arguments,
             content = content,
-            onDismissRequest = {
-                showResult = false
-            }
+            onDismissRequest = { showResult = false }
         )
     }
 }
@@ -216,39 +333,54 @@ fun ToolCallItem(
 private fun ToolCallPreviewSheet(
     toolName: String,
     arguments: JsonElement,
-    content: JsonElement,
+    content: JsonElement?,
     onDismissRequest: () -> Unit = {}
 ) {
     val navController = LocalNavController.current
     val memoryRepo: MemoryRepository = koinInject()
     val scope = rememberCoroutineScope()
 
-    // Check if this is a memory creation/update operation
-    val isMemoryOperation = toolName in listOf(ToolNames.CREATE_MEMORY, ToolNames.EDIT_MEMORY)
+    val memoryAction = arguments.getStringContent("action")
+    val isMemoryOperation = toolName == ToolNames.MEMORY &&
+        memoryAction in listOf(MemoryActions.CREATE, MemoryActions.EDIT)
     val memoryId = (content as? JsonObject)?.get("id")?.jsonPrimitiveOrNull?.intOrNull
 
     ModalBottomSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         onDismissRequest = onDismissRequest,
         content = {
-            when (toolName) {
-                ToolNames.SEARCH_WEB -> SearchWebPreview(
-                    arguments = arguments,
-                    content = content,
-                    navController = navController
-                )
-
-                ToolNames.SCRAPE_WEB -> ScrapeWebPreview(content = content)
-                else -> GenericToolPreview(
+            if (content == null) {
+                // 工具未执行,只显示参数
+                GenericToolPreview(
                     toolName = toolName,
                     arguments = arguments,
-                    content = content,
-                    isMemoryOperation = isMemoryOperation,
-                    memoryId = memoryId,
+                    content = null,
+                    isMemoryOperation = false,
+                    memoryId = null,
                     memoryRepo = memoryRepo,
                     scope = scope,
                     onDismissRequest = onDismissRequest
                 )
+            } else {
+                when (toolName) {
+                    ToolNames.SEARCH_WEB -> SearchWebPreview(
+                        arguments = arguments,
+                        content = content,
+                        navController = navController
+                    )
+
+                    ToolNames.SCRAPE_WEB -> ScrapeWebPreview(content = content)
+                    else -> GenericToolPreview(
+                        toolName = toolName,
+                        arguments = arguments,
+                        content = content,
+                        isMemoryOperation = isMemoryOperation,
+                        memoryId = memoryId,
+                        memoryRepo = memoryRepo,
+                        scope = scope,
+                        onDismissRequest = onDismissRequest
+                    )
+                }
             }
         },
     )
@@ -393,7 +525,7 @@ private fun ScrapeWebPreview(content: JsonElement) {
 private fun GenericToolPreview(
     toolName: String,
     arguments: JsonElement,
-    content: JsonElement,
+    content: JsonElement?,
     isMemoryOperation: Boolean,
     memoryId: Int?,
     memoryRepo: MemoryRepository,
@@ -418,7 +550,6 @@ private fun GenericToolPreview(
                 textAlign = TextAlign.Center
             )
 
-            // 如果是memory操作，允许用户快速删除
             if (isMemoryOperation && memoryId != null) {
                 IconButton(
                     onClick = {
@@ -446,16 +577,54 @@ private fun GenericToolPreview(
                 style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
             )
         }
-        FormItem(
-            label = {
-                Text(stringResource(R.string.chat_message_tool_call_result))
+        if (content != null) {
+            FormItem(
+                label = {
+                    Text(stringResource(R.string.chat_message_tool_call_result))
+                }
+            ) {
+                HighlightCodeBlock(
+                    code = JsonInstantPretty.encodeToString(content),
+                    language = "json",
+                    style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
+                )
             }
-        ) {
-            HighlightCodeBlock(
-                code = JsonInstantPretty.encodeToString(content),
-                language = "json",
-                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
-            )
         }
     }
+}
+
+@Composable
+private fun ToolDenyReasonDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var reason by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.chat_message_tool_deny_dialog_title))
+        },
+        text = {
+            OutlinedTextField(
+                value = reason,
+                onValueChange = { reason = it },
+                label = { Text(stringResource(R.string.chat_message_tool_deny_dialog_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                minLines = 2,
+                maxLines = 4
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(reason) }) {
+                Text(stringResource(R.string.chat_message_tool_deny))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        }
+    )
 }

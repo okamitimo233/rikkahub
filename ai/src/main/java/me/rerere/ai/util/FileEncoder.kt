@@ -16,7 +16,12 @@ private val supportedTypes = setOf(
     "image/webp",
 )
 
-fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<String> = runCatching {
+data class EncodedImage(
+    val base64: String,
+    val mimeType: String
+)
+
+fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<EncodedImage> = runCatching {
     when {
         this.url.startsWith("file://") -> {
             val filePath =
@@ -26,19 +31,23 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<String>
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
             val mimeType = file.guessMimeType().getOrThrow()
-            if (mimeType in supportedTypes) {
-                // 支持的格式，直接流式编码
-                val encoded = file.encodeToBase64Streaming()
-                if (withPrefix) "data:$mimeType;base64,$encoded" else encoded
-            } else {
-                // 不支持的格式（如 HEIC），转换为 JPEG
-                val encoded = file.convertAndEncodeToJpeg()
-                if (withPrefix) "data:image/jpeg;base64,$encoded" else encoded
-            }
+            // 统一进行压缩处理
+            val (encoded, outputMimeType) = file.compressAndEncode(mimeType)
+            EncodedImage(
+                base64 = if (withPrefix) "data:$outputMimeType;base64,$encoded" else encoded,
+                mimeType = outputMimeType
+            )
         }
 
-        this.url.startsWith("data:") -> url
-        this.url.startsWith("http") -> url
+        this.url.startsWith("data:") -> {
+            // 从 data URL 提取 mime type
+            val mimeType = url.substringAfter("data:").substringBefore(";")
+            EncodedImage(base64 = url, mimeType = mimeType)
+        }
+        this.url.startsWith("http") -> {
+            // HTTP URL 无法确定 mime type，默认使用 image/png
+            EncodedImage(base64 = url, mimeType = "image/png")
+        }
         else -> throw IllegalArgumentException("Unsupported URL format: $url")
     }
 }
@@ -77,6 +86,41 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
     }
 }
 
+private fun File.compressAndEncode(
+    mimeType: String,
+    maxDimension: Int = 2048,
+    quality: Int = 85
+): Pair<String, String> {
+    // GIF 保持原样（可能是动图）
+    if (mimeType == "image/gif") {
+        return Pair(encodeToBase64Streaming(), mimeType)
+    }
+
+    // 读取图片尺寸
+    val options = BitmapFactory.Options().apply {
+        inJustDecodeBounds = true
+    }
+    BitmapFactory.decodeFile(absolutePath, options)
+
+    // 强制压缩处理
+    options.inSampleSize = calculateInSampleSize(options, maxDimension, maxDimension)
+    options.inJustDecodeBounds = false
+
+    val bitmap = BitmapFactory.decodeFile(absolutePath, options)
+        ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
+
+    return try {
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        // 强制使用 JPEG 格式，因为很多提供商不支持 webp
+        Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, base64Stream)
+        }
+        Pair(byteArrayOutputStream.toString(Charsets.ISO_8859_1.name()), "image/jpeg")
+    } finally {
+        bitmap.recycle()
+    }
+}
+
 private fun File.encodeToBase64Streaming(): String {
     val byteArrayOutputStream = ByteArrayOutputStream()
     Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
@@ -87,41 +131,12 @@ private fun File.encodeToBase64Streaming(): String {
     return byteArrayOutputStream.toString(Charsets.ISO_8859_1.name())
 }
 
-private fun File.convertAndEncodeToJpeg(maxDimension: Int = 2048, quality: Int = 85): String {
-    // 第一次解码：只读尺寸
-    val options = BitmapFactory.Options().apply {
-        inJustDecodeBounds = true
-    }
-    BitmapFactory.decodeFile(absolutePath, options)
-
-    // 计算降采样率
-    options.inSampleSize = calculateInSampleSize(options, maxDimension, maxDimension)
-    options.inJustDecodeBounds = false
-
-    // 第二次解码：按降采样率解码
-    val bitmap = BitmapFactory.decodeFile(absolutePath, options)
-        ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
-
-    return try {
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, base64Stream)
-        }
-        byteArrayOutputStream.toString(Charsets.ISO_8859_1.name())
-    } finally {
-        bitmap.recycle()
-    }
-}
-
 private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-    val (height, width) = options.outHeight to options.outWidth
+    val height = options.outHeight
+    val width = options.outWidth
     var inSampleSize = 1
-    if (height > reqHeight || width > reqWidth) {
-        val halfHeight = height / 2
-        val halfWidth = width / 2
-        while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-            inSampleSize *= 2
-        }
+    while ((height / inSampleSize) > reqHeight || (width / inSampleSize) > reqWidth) {
+        inSampleSize *= 2
     }
     return inSampleSize
 }

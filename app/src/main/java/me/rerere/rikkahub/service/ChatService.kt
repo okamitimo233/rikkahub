@@ -1,21 +1,19 @@
 package me.rerere.rikkahub.service
 
-import android.Manifest
 import android.app.Application
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.util.Log
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -25,22 +23,18 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.finishReasoning
@@ -48,12 +42,14 @@ import me.rerere.ai.ui.truncate
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID
+import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.LocalTools
+import me.rerere.rikkahub.data.ai.tools.createSearchTools
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
@@ -68,15 +64,14 @@ import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
-import me.rerere.rikkahub.utils.JsonInstantPretty
 import me.rerere.rikkahub.utils.applyPlaceholders
-import me.rerere.rikkahub.utils.deleteChatFiles
-import me.rerere.search.SearchService
-import me.rerere.search.SearchServiceOptions
+import me.rerere.rikkahub.utils.sendNotification
+import me.rerere.rikkahub.utils.cancelNotification
 import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -92,10 +87,10 @@ data class ChatError(
 
 private val inputTransformers by lazy {
     listOf(
+        PromptInjectionTransformer,
         PlaceholderTransformer,
         DocumentAsPromptTransformer,
         OcrTransformer,
-        PromptInjectionTransformer,
     )
 }
 
@@ -118,6 +113,7 @@ class ChatService(
     private val providerManager: ProviderManager,
     private val localTools: LocalTools,
     val mcpManager: McpManager,
+    private val filesManager: FilesManager,
 ) {
     // 存储每个对话的状态
     private val conversations = ConcurrentHashMap<Uuid, MutableStateFlow<Conversation>>()
@@ -366,6 +362,73 @@ class ChatService(
         }
     }
 
+    // 处理工具调用审批
+    fun handleToolApproval(
+        conversationId: Uuid,
+        toolCallId: String,
+        approved: Boolean,
+        reason: String = ""
+    ) {
+        getGenerationJob(conversationId)?.cancel()
+
+        val job = appScope.launch {
+            try {
+                val conversation = getConversationFlow(conversationId).value
+                val newApprovalState = if (approved) {
+                    ToolApprovalState.Approved
+                } else {
+                    ToolApprovalState.Denied(reason)
+                }
+
+                // Update the tool approval state
+                val updatedNodes = conversation.messageNodes.map { node ->
+                    node.copy(
+                        messages = node.messages.map { msg ->
+                            msg.copy(
+                                parts = msg.parts.map { part ->
+                                    when {
+                                        part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
+                                            part.copy(approvalState = newApprovalState)
+                                        }
+
+                                        else -> part
+                                    }
+                                }
+                            )
+                        }
+                    )
+                }
+                val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+                saveConversation(conversationId, updatedConversation)
+
+                // Check if there are still pending tools
+                val hasPendingTools = updatedNodes.any { node ->
+                    node.currentMessage.parts.any { part ->
+                        part is UIMessagePart.Tool && part.isPending
+                    }
+                }
+
+                // Only continue generation when all pending tools are handled
+                if (!hasPendingTools) {
+                    handleMessageComplete(conversationId)
+                }
+
+                _generationDoneFlow.emit(conversationId)
+            } catch (e: Exception) {
+                addError(e)
+            }
+        }
+
+        setGenerationJob(conversationId, job)
+        job.invokeOnCompletion {
+            setGenerationJob(conversationId, null)
+            appScope.launch {
+                delay(500)
+                checkAllConversationsReferences()
+            }
+        }
+    }
+
     // 处理消息补全
     private suspend fun handleMessageComplete(
         conversationId: Uuid,
@@ -402,7 +465,11 @@ class ChatService(
                     }
                 },
                 assistant = settings.getCurrentAssistant(),
-                memories = memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString()),
+                memories = if (settings.getCurrentAssistant().useGlobalMemory) {
+                    memoryRepository.getGlobalMemories()
+                } else {
+                    memoryRepository.getMemoriesOfAssistant(settings.assistantId.toString())
+                },
                 inputTransformers = buildList {
                     addAll(inputTransformers)
                     add(templateTransformer)
@@ -410,7 +477,7 @@ class ChatService(
                 outputTransformers = outputTransformers,
                 tools = buildList {
                     if (settings.enableWebSearch) {
-                        addAll(createSearchTool(settings))
+                        addAll(createSearchTools(settings))
                     }
                     addAll(localTools.getTools(settings.getCurrentAssistant().localTools))
                     mcpManager.getAllAvailableTools().forEach { tool ->
@@ -419,8 +486,13 @@ class ChatService(
                                 name = "mcp__" + tool.name,
                                 description = tool.description ?: "",
                                 parameters = { tool.inputSchema },
+                                needsApproval = tool.needsApproval,
                                 execute = {
-                                    mcpManager.callTool(tool.name, it.jsonObject)
+                                    listOf(
+                                        UIMessagePart.Text(
+                                            mcpManager.callTool(tool.name, it.jsonObject).toString()
+                                        )
+                                    )
                                 },
                             )
                         )
@@ -428,6 +500,9 @@ class ChatService(
                 },
                 truncateIndex = conversation.truncateIndex,
             ).onCompletion {
+                // 取消 Live Update 通知
+                cancelLiveUpdateNotification(conversationId)
+
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
                     messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
@@ -447,10 +522,18 @@ class ChatService(
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(chunk.messages)
                         updateConversation(conversationId, updatedConversation)
+
+                        // 如果应用不在前台，发送 Live Update 通知
+                        if (!isForeground.value && settings.displaySetting.enableNotificationOnMessageGeneration && settings.displaySetting.enableLiveUpdateNotification) {
+                            sendLiveUpdateNotification(conversationId, chunk.messages)
+                        }
                     }
                 }
             }
         }.onFailure {
+            // 取消 Live Update 通知
+            cancelLiveUpdateNotification(conversationId)
+
             it.printStackTrace()
             addError(it)
             Logging.log(TAG, "handleMessageComplete: $it")
@@ -471,154 +554,36 @@ class ChatService(
         }
     }
 
-    // 创建搜索工具
-    private fun createSearchTool(settings: Settings): Set<Tool> {
-        return buildSet {
-            add(
-                Tool(
-                    name = "search_web",
-                    description = "search web for latest information",
-                    parameters = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
-                        val service = SearchService.getService(options)
-                        service.parameters
-                    },
-                    execute = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
-                        val service = SearchService.getService(options)
-                        val result = service.search(
-                            params = it.jsonObject,
-                            commonOptions = settings.searchCommonOptions,
-                            serviceOptions = options,
-                        )
-                        val results =
-                            JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject.let { json ->
-                                val map = json.toMutableMap()
-                                map["items"] =
-                                    JsonArray(map["items"]!!.jsonArray.mapIndexed { index, item ->
-                                        JsonObject(item.jsonObject.toMutableMap().apply {
-                                            put("id", JsonPrimitive(Uuid.random().toString().take(6)))
-                                            put("index", JsonPrimitive(index + 1))
-                                        })
-                                    })
-                                JsonObject(map)
-                            }
-                        results
-                    }, systemPrompt = { model, messages ->
-                        if (model.tools.isNotEmpty()) return@Tool ""
-                        val hasToolCall =
-                            messages.any { it.getToolCalls().any { toolCall -> toolCall.toolName == "search_web" } }
-                        val prompt = StringBuilder()
-                        prompt.append(
-                            """
-                    ## tool: search_web
-
-                    ### usage
-                    - You can use the search_web tool to search the internet for the latest news or to confirm some facts.
-                    - You can perform multiple search if needed
-                    - Generate keywords based on the user's question
-                    - Today is {{cur_date}}
-                    """.trimIndent()
-                        )
-                        if (hasToolCall) {
-                            prompt.append(
-                                """
-                        ### result example
-                        ```json
-                        {
-                            "items": [
-                                {
-                                    "id": "random id in 6 characters",
-                                    "title": "Title",
-                                    "url": "https://example.com",
-                                    "text": "Some relevant snippets"
-                                }
-                            ]
-                        }
-                        ```
-
-                        ### citation
-                        After using the search tool, when replying to users, you need to add a reference format to the referenced search terms in the content.
-                        When citing facts or data from search results, you need to add a citation marker after the sentence: `[citation,domain](id of the search result)`.
-
-                        For example:
-                        ```
-                        The capital of France is Paris. [citation,example.com](id of the search result)
-
-                        The population of Paris is about 2.1 million. [citation,example.com](id of the search result) [citation,example2.com](id of the search result)
-                        ```
-
-                        If no search results are cited, you do not need to add a citation marker.
-                        """.trimIndent()
-                            )
-                        }
-                        prompt.toString()
-                    }
-                )
-            )
-
-            val options = settings.searchServices.getOrElse(
-                index = settings.searchServiceSelected,
-                defaultValue = { SearchServiceOptions.DEFAULT })
-            val service = SearchService.getService(options)
-            if (service.scrapingParameters != null) {
-                add(
-                    Tool(
-                        name = "scrape_web",
-                        description = "scrape web for content",
-                        parameters = {
-                            val options = settings.searchServices.getOrElse(
-                                index = settings.searchServiceSelected,
-                                defaultValue = { SearchServiceOptions.DEFAULT })
-                            val service = SearchService.getService(options)
-                            service.scrapingParameters
-                        },
-                        execute = {
-                            val options = settings.searchServices.getOrElse(
-                                index = settings.searchServiceSelected,
-                                defaultValue = { SearchServiceOptions.DEFAULT })
-                            val service = SearchService.getService(options)
-                            val result = service.scrape(
-                                params = it.jsonObject,
-                                commonOptions = settings.searchCommonOptions,
-                                serviceOptions = options,
-                            )
-                            JsonInstantPretty.encodeToJsonElement(result.getOrThrow()).jsonObject
-                        },
-                        systemPrompt = { model, messages ->
-                            return@Tool """
-                            ## tool: scrape_web
-
-                            ### usage
-                            - You can use the scrape_web tool to scrape url for detailed content.
-                            - You can perform multiple scrape if needed.
-                            - For common problems, try not to use this tool unless the user requests it.
-                        """.trimIndent()
-                        }
-                    ))
-            }
-        }
-    }
-
     // 检查无效消息
     private fun checkInvalidMessages(conversationId: Uuid) {
         val conversation = getConversationFlow(conversationId).value
         var messagesNodes = conversation.messageNodes
 
-        // 移除无效tool call
+        // 移除无效 tool (未执行的 Tool)
         messagesNodes = messagesNodes.mapIndexed { index, node ->
-            val next = if (index < messagesNodes.size - 1) messagesNodes[index + 1] else null
-            if (node.currentMessage.hasPart<UIMessagePart.ToolCall>()) {
-                if (next?.currentMessage?.hasPart<UIMessagePart.ToolResult>() != true) {
-                    return@mapIndexed node.copy(
-                        messages = node.messages.filter { it.id != node.currentMessage.id },
-                        selectIndex = node.selectIndex - 1
-                    )
+            // Check for Tool type with non-executed tools
+            val hasPendingTools = node.currentMessage.getTools().any { !it.isExecuted }
+
+            if (hasPendingTools) {
+                // Skip removal if any tool is Approved (waiting to be executed)
+                val hasApprovedTool = node.currentMessage.getTools().any {
+                    it.approvalState is ToolApprovalState.Approved
                 }
+                if (hasApprovedTool) {
+                    return@mapIndexed node
+                }
+
+                // If all tools are executed, it's valid
+                val allToolsExecuted = node.currentMessage.getTools().all { it.isExecuted }
+                if (allToolsExecuted && node.currentMessage.getTools().isNotEmpty()) {
+                    return@mapIndexed node
+                }
+
+                // Remove message with pending non-approved tools
+                return@mapIndexed node.copy(
+                    messages = node.messages.filter { it.id != node.currentMessage.id },
+                    selectIndex = node.selectIndex - 1
+                )
             }
             node
         }
@@ -683,6 +648,7 @@ class ChatService(
             }
         }.onFailure {
             it.printStackTrace()
+            addError(it)
         }
     }
 
@@ -732,28 +698,190 @@ class ChatService(
         }
     }
 
+    // 压缩对话历史
+    suspend fun compressConversation(
+        conversationId: Uuid,
+        conversation: Conversation,
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int = 32
+    ): Result<Unit> = runCatching {
+        val settings = settingsStore.settingsFlow.first()
+        val model = settings.findModelById(settings.compressModelId)
+            ?: settings.getCurrentChatModel()
+            ?: throw IllegalStateException("No model available for compression")
+        val provider = model.findProvider(settings.providers)
+            ?: throw IllegalStateException("Provider not found")
+
+        val providerHandler = providerManager.getProviderByType(provider)
+
+        val maxMessagesPerChunk = 256
+        val allMessages = conversation.currentMessages.truncate(conversation.truncateIndex)
+
+        // Split messages into those to compress and those to keep
+        val messagesToCompress: List<UIMessage>
+        val messagesToKeep: List<UIMessage>
+
+        if (keepRecentMessages > 0 && allMessages.size > keepRecentMessages) {
+            messagesToCompress = allMessages.dropLast(keepRecentMessages)
+            messagesToKeep = allMessages.takeLast(keepRecentMessages)
+        } else if (keepRecentMessages > 0) {
+            // Not enough messages to compress while keeping recent ones
+            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
+        } else {
+            messagesToCompress = allMessages
+            messagesToKeep = emptyList()
+        }
+
+        fun splitMessages(messages: List<UIMessage>): List<List<UIMessage>> {
+            if (messages.size <= maxMessagesPerChunk) return listOf(messages)
+            val mid = messages.size / 2
+            val left = splitMessages(messages.subList(0, mid))
+            val right = splitMessages(messages.subList(mid, messages.size))
+            return left + right
+        }
+
+        suspend fun compressMessages(messages: List<UIMessage>): String {
+            val contentToCompress = messages.joinToString("\n\n") { it.summaryAsText() }
+            val prompt = settings.compressPrompt.applyPlaceholders(
+                "content" to contentToCompress,
+                "target_tokens" to targetTokens.toString(),
+                "additional_context" to if (additionalPrompt.isNotBlank()) {
+                    "Additional instructions from user: $additionalPrompt"
+                } else "",
+                "locale" to Locale.getDefault().displayName
+            )
+
+            val result = providerHandler.generateText(
+                providerSetting = provider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = TextGenerationParams(
+                    model = model,
+                ),
+            )
+
+            return result.choices[0].message?.toText()?.trim()
+                ?: throw IllegalStateException("Failed to generate compressed summary")
+        }
+
+        val compressedSummaries = coroutineScope {
+            splitMessages(messagesToCompress)
+                .map { chunk -> async { compressMessages(chunk) } }
+                .awaitAll()
+        }
+
+        // Create new conversation with compressed history as multiple user messages + kept messages
+        val newMessageNodes = buildList {
+            compressedSummaries.forEach { summary ->
+                add(UIMessage.user(summary).toMessageNode())
+            }
+            addAll(messagesToKeep.map { it.toMessageNode() })
+        }
+        val newConversation = conversation.copy(
+            messageNodes = newMessageNodes,
+            truncateIndex = -1,
+            chatSuggestions = emptyList(),
+        )
+
+        saveConversation(conversationId, newConversation)
+    }
+
     // 发送生成完成通知
     private fun sendGenerationDoneNotification(conversationId: Uuid) {
-        val conversation = getConversationFlow(conversationId).value
-        val notification =
-            NotificationCompat.Builder(context, CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID)
-                .setContentTitle(context.getString(R.string.notification_chat_done_title))
-                .setContentText(conversation.currentMessages.lastOrNull()?.toText()?.take(50) ?: "")
-                .setSmallIcon(R.drawable.small_icon)
-                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                .setAutoCancel(true)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                .setContentIntent(getPendingIntent(context, conversationId))
+        // 先取消 Live Update 通知
+        cancelLiveUpdateNotification(conversationId)
 
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
+        val conversation = getConversationFlow(conversationId).value
+        context.sendNotification(
+            channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
+            notificationId = 1
         ) {
-            return
+            title = context.getString(R.string.notification_chat_done_title)
+            content = conversation.currentMessages.lastOrNull()?.toText()?.take(50) ?: ""
+            autoCancel = true
+            useDefaults = true
+            category = NotificationCompat.CATEGORY_MESSAGE
+            contentIntent = getPendingIntent(context, conversationId)
         }
-        NotificationManagerCompat.from(context).notify(1, notification.build())
+    }
+
+    // Live Update 通知相关
+    private fun getLiveUpdateNotificationId(conversationId: Uuid): Int {
+        return conversationId.hashCode() + 10000
+    }
+
+    private fun sendLiveUpdateNotification(
+        conversationId: Uuid,
+        messages: List<UIMessage>
+    ) {
+        val lastMessage = messages.lastOrNull() ?: return
+        val parts = lastMessage.parts
+
+        // 确定当前状态
+        val (chipText, statusText, contentText) = determineNotificationContent(parts)
+
+        context.sendNotification(
+            channelId = CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID,
+            notificationId = getLiveUpdateNotificationId(conversationId)
+        ) {
+            title = context.getString(R.string.notification_live_update_title)
+            content = contentText
+            subText = statusText
+            ongoing = true
+            onlyAlertOnce = true
+            category = NotificationCompat.CATEGORY_PROGRESS
+            useBigTextStyle = true
+            contentIntent = getPendingIntent(context, conversationId)
+            requestPromotedOngoing = true
+            shortCriticalText = chipText
+        }
+    }
+
+    private fun determineNotificationContent(parts: List<UIMessagePart>): Triple<String, String, String> {
+        // 检查最近的 part 来确定状态
+        val lastReasoning = parts.filterIsInstance<UIMessagePart.Reasoning>().lastOrNull()
+        val lastTool = parts.filterIsInstance<UIMessagePart.Tool>().lastOrNull()
+        val lastText = parts.filterIsInstance<UIMessagePart.Text>().lastOrNull()
+
+        return when {
+            // 正在执行工具
+            lastTool != null && !lastTool.isExecuted -> {
+                val toolName = lastTool.toolName.removePrefix("mcp__")
+                Triple(
+                    context.getString(R.string.notification_live_update_chip_tool),
+                    context.getString(R.string.notification_live_update_tool, toolName),
+                    lastTool.input.take(100)
+                )
+            }
+            // 正在思考（Reasoning 未结束）
+            lastReasoning != null && lastReasoning.finishedAt == null -> {
+                Triple(
+                    context.getString(R.string.notification_live_update_chip_thinking),
+                    context.getString(R.string.notification_live_update_thinking),
+                    lastReasoning.reasoning.takeLast(200)
+                )
+            }
+            // 正在写回复
+            lastText != null -> {
+                Triple(
+                    context.getString(R.string.notification_live_update_chip_writing),
+                    context.getString(R.string.notification_live_update_writing),
+                    lastText.text.takeLast(200)
+                )
+            }
+            // 默认状态
+            else -> {
+                Triple(
+                    context.getString(R.string.notification_live_update_chip_writing),
+                    context.getString(R.string.notification_live_update_title),
+                    ""
+                )
+            }
+        }
+    }
+
+    private fun cancelLiveUpdateNotification(conversationId: Uuid) {
+        context.cancelNotification(getLiveUpdateNotificationId(conversationId))
     }
 
     private fun getPendingIntent(context: Context, conversationId: Uuid): PendingIntent {
@@ -785,7 +913,7 @@ class ChatService(
             newFiles.none { it == file }
         }
         if (deletedFiles.isNotEmpty()) {
-            context.deleteChatFiles(deletedFiles)
+            filesManager.deleteChatFiles(deletedFiles)
             Log.w(TAG, "checkFilesDelete: $deletedFiles")
         }
     }
