@@ -12,4 +12,5 @@ local.properties
 .history
 .kotlin
 .omc/
-.claude/*
+.claude/
+.ace-tool/
