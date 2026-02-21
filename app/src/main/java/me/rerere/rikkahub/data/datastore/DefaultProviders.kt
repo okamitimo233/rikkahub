@@ -325,4 +325,47 @@ val DEFAULT_PROVIDERS = listOf(
             )
         }
     ),
+    ProviderSetting.DeepSeekWeb(
+        id = Uuid.parse("d5ee9500-a1b2-4c3d-8e4f-000000000001"),
+        name = "DeepSeek Web",
+        enabled = false,
+        builtIn = true,
+        description = {
+            Text("Use your DeepSeek web account (email/mobile + password) to chat directly, no API Key needed.")
+        },
+        models = listOf(
+            Model(
+                id = Uuid.parse("c5a1e000-0001-0001-0001-000000000001"),
+                modelId = "deepseek-chat",
+                displayName = "DeepSeek V3",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.TOOL),
+            ),
+            Model(
+                id = Uuid.parse("c5a1e000-0002-0002-0002-000000000002"),
+                modelId = "deepseek-reasoner",
+                displayName = "DeepSeek R1",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.REASONING),
+            ),
+            Model(
+                id = Uuid.parse("c5a1e000-0003-0003-0003-000000000003"),
+                modelId = "deepseek-chat-search",
+                displayName = "DeepSeek V3 (Search)",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.TOOL),
+            ),
+            Model(
+                id = Uuid.parse("c5a1e000-0004-0004-0004-000000000004"),
+                modelId = "deepseek-reasoner-search",
+                displayName = "DeepSeek R1 (Search)",
+                inputModalities = listOf(Modality.TEXT),
+                outputModalities = listOf(Modality.TEXT),
+                abilities = listOf(ModelAbility.REASONING),
+            ),
+        ),
+    ),
 )

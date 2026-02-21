@@ -25,6 +25,17 @@ import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.reflect.KClass
 import kotlin.reflect.full.primaryConstructor
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import com.composables.icons.lucide.Eye
+import com.composables.icons.lucide.EyeOff
+import com.composables.icons.lucide.Lucide
 
 @Composable
 fun ProviderConfigure(
@@ -75,6 +86,10 @@ fun ProviderConfigure(
             is ProviderSetting.Claude -> {
                 ProviderConfigureClaude(provider, onEdit)
             }
+
+            is ProviderSetting.DeepSeekWeb -> {
+                ProviderConfigureDeepSeekWeb(provider, onEdit)
+            }
         }
     }
 }
@@ -84,6 +99,7 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
         is ProviderSetting.OpenAI -> this.apiKey
         is ProviderSetting.Google -> this.apiKey
         is ProviderSetting.Claude -> this.apiKey
+        is ProviderSetting.DeepSeekWeb -> ""
     }
     val newProvider = type.primaryConstructor!!.callBy(emptyMap())
     return when (newProvider) {
@@ -112,6 +128,14 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
             balanceOption = this.balanceOption,
             builtIn = this.builtIn,
             apiKey = apiKey
+        )
+
+        is ProviderSetting.DeepSeekWeb -> newProvider.copy(
+            id = this.id,
+            enabled = this.enabled,
+            models = this.models,
+            balanceOption = this.balanceOption,
+            builtIn = this.builtIn,
         )
     }
 }
@@ -376,6 +400,95 @@ private fun ColumnScope.ProviderConfigureGoogle(
                 Text(stringResource(id = R.string.setting_provider_page_project_id))
             },
             modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.ProviderConfigureDeepSeekWeb(
+    provider: ProviderSetting.DeepSeekWeb,
+    onEdit: (provider: ProviderSetting.DeepSeekWeb) -> Unit
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    provider.description()
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(stringResource(id = R.string.setting_provider_page_enable), modifier = Modifier.weight(1f))
+        Checkbox(
+            checked = provider.enabled,
+            onCheckedChange = {
+                onEdit(provider.copy(enabled = it))
+            }
+        )
+    }
+
+    OutlinedTextField(
+        value = provider.name,
+        onValueChange = {
+            onEdit(provider.copy(name = it.trim()))
+        },
+        label = {
+            Text(stringResource(id = R.string.setting_provider_page_name))
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    OutlinedTextField(
+        value = provider.email,
+        onValueChange = {
+            onEdit(provider.copy(email = it.trim()))
+        },
+        label = {
+            Text("Email")
+        },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+
+    OutlinedTextField(
+        value = provider.mobile,
+        onValueChange = {
+            onEdit(provider.copy(mobile = it.trim()))
+        },
+        label = {
+            Text("Mobile")
+        },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+
+    OutlinedTextField(
+        value = provider.password,
+        onValueChange = {
+            onEdit(provider.copy(password = it))
+        },
+        label = {
+            Text("Password")
+        },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                Icon(
+                    imageVector = if (passwordVisible) Lucide.EyeOff else Lucide.Eye,
+                    contentDescription = null
+                )
+            }
+        }
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (provider.token.isNotBlank()) "Token: Cached" else "Token: Not logged in",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (provider.token.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
         )
     }
 }

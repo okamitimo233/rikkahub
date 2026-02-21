@@ -1,6 +1,7 @@
 package me.rerere.ai.provider
 
 import me.rerere.ai.provider.providers.ClaudeProvider
+import me.rerere.ai.provider.providers.DeepSeekWebProvider
 import me.rerere.ai.provider.providers.GoogleProvider
 import me.rerere.ai.provider.providers.OpenAIProvider
 import okhttp3.OkHttpClient
@@ -17,6 +18,7 @@ class ProviderManager(client: OkHttpClient) {
         registerProvider("openai", OpenAIProvider(client))
         registerProvider("google", GoogleProvider(client))
         registerProvider("claude", ClaudeProvider(client))
+        registerProvider("deepseek_web", DeepSeekWebProvider(client))
     }
 
     /**
@@ -51,6 +53,7 @@ class ProviderManager(client: OkHttpClient) {
             is ProviderSetting.OpenAI -> getProvider("openai")
             is ProviderSetting.Google -> getProvider("google")
             is ProviderSetting.Claude -> getProvider("claude")
+            is ProviderSetting.DeepSeekWeb -> getProvider("deepseek_web")
         } as Provider<T>
     }
 }

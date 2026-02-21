@@ -252,6 +252,10 @@ class SettingsStore(
                         is ProviderSetting.Claude -> provider.copy(
                             models = provider.models.distinctBy { model -> model.id }
                         )
+
+                        is ProviderSetting.DeepSeekWeb -> provider.copy(
+                            models = provider.models.distinctBy { model -> model.id }
+                        )
                     }
                 },
                 assistants = settings.assistants.distinctBy { it.id }.map { assistant ->
