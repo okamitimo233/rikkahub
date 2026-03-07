@@ -1,12 +1,12 @@
 # Frontend Development Guidelines
 
-> Best practices for frontend development in this project.
+> Best practices for frontend (Jetpack Compose) development in this project.
 
 ---
 
 ## Overview
 
-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
+This directory contains guidelines for frontend development. RikkaHub uses Jetpack Compose with Material Design 3, Koin for DI, and Navigation3 for routing.
 
 ---
 
@@ -14,25 +14,25 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Directory Structure](./directory-structure.md) | UI pages, components, hooks, theme organization | Done |
+| [Component Guidelines](./component-guidelines.md) | Composable patterns, FormItem, icons, toasts, dialogs | Done |
+| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, effects, data fetching patterns | Done |
+| [State Management](./state-management.md) | ViewModel, StateFlow, Koin DI, CompositionLocal, DataStore | Done |
+| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, testing | Done |
+| [Type Safety](./type-safety.md) | Kotlin types, sealed classes, serialization, nullability | Done |
 
 ---
 
-## How to Fill These Guidelines
+## Quick Reference
 
-For each guideline file:
+### Key Conventions
 
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
+- **Icons**: `HugeIcons` from `me.rerere.hugeicons` (NOT Lucide)
+- **Toast**: `LocalToaster.current` from `com.dokar.sonner`
+- **Forms**: `FormItem` for settings/form layouts
+- **DI**: Koin — `koinViewModel()` for ViewModels, `koinInject()` for services
+- **State**: `collectAsStateWithLifecycle()` for StateFlow in composables
+- **Navigation**: Navigation3 with `Screen` sealed interface routes
 
 ---
 

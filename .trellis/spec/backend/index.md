@@ -1,12 +1,12 @@
 # Backend Development Guidelines
 
-> Best practices for backend development in this project.
+> Best practices for backend (data layer) development in this project.
 
 ---
 
 ## Overview
 
-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
+This directory contains guidelines for backend development. RikkaHub's "backend" is the data layer: Room database, repositories, DataStore preferences, AI provider integration, and sync clients.
 
 ---
 
@@ -14,24 +14,24 @@ This directory contains guidelines for backend development. Fill in each file wi
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | To fill |
-| [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | To fill |
+| [Directory Structure](./directory-structure.md) | Multi-module structure, data layer organization | Done |
+| [Database Guidelines](./database-guidelines.md) | Room entities, DAOs, queries, migrations, FTS | Done |
+| [Error Handling](./error-handling.md) | Error types, propagation, Result pattern | Done |
+| [Quality Guidelines](./quality-guidelines.md) | Code standards, DI, testing, forbidden patterns | Done |
+| [Logging Guidelines](./logging-guidelines.md) | Log levels, structured logging, HTTP logging | Done |
 
 ---
 
-## How to Fill These Guidelines
+## Quick Reference
 
-For each guideline file:
+### Key Conventions
 
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
-
-The goal is to help AI assistants and new team members understand how YOUR project works.
+- **Database**: Room v17, KSP for annotation processing, `snake_case` columns
+- **DI**: Koin — singletons for data layer, `viewModelOf()` for VMs
+- **Serialization**: `kotlinx.serialization` with `@SerialName` discriminators
+- **Error handling**: Let exceptions propagate; `Result<T>` only for network clients
+- **Migrations**: `AutoMigration` for simple changes, manual `Migration` for data transforms
+- **Logging**: `android.util.Log` with `TAG` constant per file
 
 ---
 
