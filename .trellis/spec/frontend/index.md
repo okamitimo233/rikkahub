@@ -20,6 +20,8 @@ This directory contains guidelines for frontend development. RikkaHub uses Jetpa
 | [State Management](./state-management.md) | ViewModel, StateFlow, Koin DI, CompositionLocal, DataStore | Done |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns, testing | Done |
 | [Type Safety](./type-safety.md) | Kotlin types, sealed classes, serialization, nullability | Done |
+| [Icon Search Guide](./icon-search-guide.md) | HugeIcons search workflow via `/find-hugeicons` skill | Done |
+| [Localization Guidelines](./localization-guidelines.md) | i18n workflow via `locale-tui` tool | Done |
 
 ---
 
@@ -33,6 +35,9 @@ This directory contains guidelines for frontend development. RikkaHub uses Jetpa
 - **DI**: Koin — `koinViewModel()` for ViewModels, `koinInject()` for services
 - **State**: `collectAsStateWithLifecycle()` for StateFlow in composables
 - **Navigation**: Navigation3 with `Screen` sealed interface routes
+- **Icon search**: Use `/find-hugeicons` skill to search icons by keyword — never guess names
+- **Localization**: Use `/locale-tui-localization` skill when explicitly requested
+- **Code review**: Use `/simplify` skill after significant code changes to check quality
 
 ---
 

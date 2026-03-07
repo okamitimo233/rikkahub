@@ -147,3 +147,15 @@ isShrinkResources = true (release)
 - [ ] No nullable collections — use `emptyList()` / `emptySet()`
 - [ ] No base64 images stored in database
 - [ ] Errors propagate from repository (no silent catch)
+
+---
+
+## Skill-Assisted Review
+
+After significant code changes, use the `/simplify` skill for automated quality review:
+
+- **What it checks**: Code reuse opportunities, quality issues, efficiency improvements
+- **When to use**: After implementing a feature or making multi-file changes
+- **What it does**: Reviews changed code and self-fixes any issues found
+
+> `/simplify` complements manual review — it catches mechanical issues so you can focus on architecture and logic.

@@ -127,3 +127,15 @@ insert_final_newline = true
 - [ ] Sealed classes use `@SerialName` for serialized variants
 - [ ] Page follows Scaffold + TopAppBar + BackButton pattern
 - [ ] No hardcoded colors — uses MaterialTheme or LocalExtendColors
+
+---
+
+## Skill-Assisted Review
+
+After significant code changes, use the `/simplify` skill for automated quality review:
+
+- **What it checks**: Code reuse opportunities, quality issues, efficiency improvements
+- **When to use**: After implementing a feature or making multi-file changes
+- **What it does**: Reviews changed code and self-fixes any issues found
+
+> `/simplify` complements manual review — it catches mechanical issues so you can focus on architecture and logic.
