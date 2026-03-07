@@ -58,3 +58,58 @@ Filled all 11 `.trellis/spec/` guideline files based on deep codebase analysis u
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Trellis skill integration & codeagent bridge
+
+**Date**: 2026-03-07
+**Task**: Trellis skill integration & codeagent bridge
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| 工作项 | 说明 |
+|--------|------|
+| 技能集成 | 将 `find-hugeicons`、`locale-tui-localization`、`simplify`、`publish-release` 集成到 Trellis spec |
+| codeagent 集成 | 创建 `codeagent_bridge.py`，将 codeagent-wrapper 作为补充执行路径接入 Trellis |
+| trellis-local | 创建项目级 skill，记录所有定制化内容 |
+
+**新建文件**:
+- `.claude/skills/trellis-local/SKILL.md` — 项目定制化技能文档
+- `.trellis/scripts/codeagent_bridge.py` — codeagent 上下文适配器
+- `.trellis/spec/frontend/icon-search-guide.md` — HugeIcons 搜索指南
+- `.trellis/spec/frontend/localization-guidelines.md` — i18n 工作流指南
+- `.trellis/spec/guides/release-workflow.md` — 发布流程指南
+
+**更新文件**:
+- `.trellis/spec/frontend/index.md` — 添加 3 个新文档索引
+- `.trellis/spec/frontend/quality-guidelines.md` — 添加 `/simplify` 技能引用
+- `.trellis/spec/backend/quality-guidelines.md` — 添加 `/simplify` 技能引用
+- `.trellis/spec/guides/index.md` — 添加 Release Workflow 条目
+
+**架构决策**:
+- codex backend → GPT 模型（深度分析/重构）
+- gemini backend → OpenCode/Gemini（UI 原型）
+- check phase 保留内置 Agent（维持 Ralph Loop 质量门控）
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `none` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
