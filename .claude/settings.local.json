@@ -7,5 +7,6 @@
       "Bash(python3:*)"
     ],
     "deny": []
-  }
+  },
+  "outputStyle": "engineer-professional"
 }
