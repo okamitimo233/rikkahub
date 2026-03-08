@@ -1,0 +1,8 @@
+{"file": ".opencode/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
+{"file": ".opencode/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": ".opencode/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/ProviderSetting.kt", "reason": "Verify DeepSeek sealed subclass follows existing patterns"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/ProviderManager.kt", "reason": "Verify provider registration and when expression"}
+{"file": "app/src/main/java/me/rerere/rikkahub/ui/pages/setting/components/ProviderConfigure.kt", "reason": "Verify all when expressions updated for DeepSeek"}
+{"file": "ai/src/main/java/me/rerere/ai/ui/Message.kt", "reason": "Verify MessageChunk/UIMessagePart usage consistency"}
+{"file": ".trellis/tasks/03-08-pow-wasm-provider/prd.md", "reason": "Verify against PRD acceptance criteria"}

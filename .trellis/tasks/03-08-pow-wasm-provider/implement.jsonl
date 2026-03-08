@@ -1,0 +1,13 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/ProviderSetting.kt", "reason": "ProviderSetting sealed class - add DeepSeek subclass"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/ProviderManager.kt", "reason": "Register DeepSeekProvider, update getProviderByType"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/Provider.kt", "reason": "Provider interface - reference for implementing DeepSeekProvider"}
+{"file": "ai/src/main/java/me/rerere/ai/provider/providers/openai/ChatCompletionsAPI.kt", "reason": "Reference: SSE streaming pattern with callbackFlow"}
+{"file": "ai/src/main/java/me/rerere/ai/ui/Message.kt", "reason": "UIMessage, MessageChunk, UIMessagePart types"}
+{"file": "app/src/main/java/me/rerere/rikkahub/ui/pages/setting/components/ProviderConfigure.kt", "reason": "Add DeepSeek UI configuration"}
+{"file": "ai/build.gradle.kts", "reason": "Add Chasm dependency"}
+{"file": "gradle/libs.versions.toml", "reason": "Add chasm version entry"}
+{"file": "ai/src/main/java/me/rerere/ai/util/SSE.kt", "reason": "SSEEventSource - reference for custom SSE handling"}
+{"file": ".trellis/tasks/03-08-pow-wasm-provider/prd.md", "reason": "PRD with full architecture and DTO definitions"}

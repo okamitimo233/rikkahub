@@ -229,3 +229,72 @@ Audited and integrated two suggestion documents (`prd-frontend-suggestions-pendi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: DeepSeek PoW Provider: Research & Context Setup
+
+**Date**: 2026-03-08
+**Task**: DeepSeek PoW Provider: Research & Context Setup
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## Research Completed
+
+Deep research on the DeepSeek PoW WASM Provider integration, covering:
+
+### 1. RikkaHub Architecture Analysis
+- `Provider<T>` interface, `ProviderSetting` sealed class, `ProviderManager` registration
+- SSE streaming pattern (`callbackFlow` + `EventSourceListener`)
+- `MessageChunk` / `UIMessage` / `UIMessagePart` type system
+- Koin DI modules, build.gradle dependency management
+- `ProviderConfigure.kt` UI patterns (when expressions, `convertTo`, `FormItem`)
+
+### 2. ds2api WASM Calling Convention (from local project D:\MyRespository\ds2api)
+- **WASM exports**: `wasm_solve`, `__wbindgen_add_to_stack_pointer`, `__wbindgen_export_0` (malloc), `__wbindgen_export_2` (free)
+- **Call sequence**: stack alloc → string alloc/write → wasm_solve → read retptr (status i32 + answer f64) → cleanup
+- **Prefix**: `"${salt}_${expireAt}_"`
+- **Header**: `Base64(JSON({algorithm, challenge, salt, answer, signature, target_path}))`
+
+### 3. DeepSeek API Protocol
+- Challenge: `POST /api/v0/chat/create_pow_challenge`
+- Session: `POST /api/v0/chat_session/create`
+- Completion: `POST /api/v0/chat/completion` + `x-ds-pow-response` header
+- SSE format: `p`/`o`/`v` patch model (thinking_content, content, fragments, status)
+
+### 4. Chasm WASM Runtime API
+- Latest version: 1.3.1 (`io.github.charlietap.chasm:chasm`)
+- API: `module(bytes)`, `store()`, `instance(store, module)`, `invoke(store, instance, name, args)`
+- Value types: `Value.Number.I32`, `Value.Number.F64`
+- Memory: `readBytes`/`writeBytes` for linear memory access
+
+### Files Modified
+- Copied `sha3_wasm_bg.wasm` (26KB) to `app/src/main/assets/`
+- Created task context files (implement.jsonl, check.jsonl, debug.jsonl)
+- Activated task as current
+
+### Next Steps
+- Launch Implement Agent with code-spec context injection
+- Implement DeepSeekProvider (backend) + UI configuration (frontend)
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86723742` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
