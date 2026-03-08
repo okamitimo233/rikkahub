@@ -175,3 +175,57 @@ Added frontend architecture suggestions and UI/UX checks to the DeepSeek Provide
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Integrate frontend/backend suggestions into DeepSeek PoW PRD
+
+**Date**: 2026-03-08
+**Task**: Integrate frontend/backend suggestions into DeepSeek PoW PRD
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## What was done
+
+Audited and integrated two suggestion documents (`prd-frontend-suggestions-pending.md` and `prd-backend-suggestions-pending.md`) into the main `prd.md` for the DeepSeek PoW WASM Provider task.
+
+## Key Changes to PRD
+
+| Category | Changes |
+|----------|---------|
+| **Phased Delivery** | Introduced Phase 1/2/3 split; login demoted to Phase 2 |
+| **Architecture** | Provider split into orchestration layer + 4 components (ChallengeClient, PowSolver, PowEncoder, MessageMapper) |
+| **ProviderSetting** | Persistent config only (token + models); no runtime state |
+| **Error Handling** | New section with error matrix, retry strategy, exception types, structured logging |
+| **DTO** | Defined serialization DTOs for all protocols (PowChallenge, CompletionRequest, StreamChunk, Fragment) |
+| **WASM** | Lazy loading + singleton cache; Dispatchers.Default; coroutine cancellation support |
+| **Response Layer** | Unified streaming/non-streaming conversion via shared MessageMapper |
+| **Frontend UI** | PoW status feedback, reasoning expand/collapse, thread safety requirements |
+| **Testing** | Detailed test categories (PowEncoder, MessageMapper, chunk merge, retry flow) |
+
+## Resolved Conflicts
+- Original PRD had contradictory scope (Out of Scope excluded login, but Decision/body included login design)
+- Unified under Phased Delivery: Phase 1 manual token, Phase 2 login flow
+- Login design preserved as Phase 2 reference material
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b5841936` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
