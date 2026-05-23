@@ -88,3 +88,9 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 - English(en) is the default language. Chinese(zh), Japanese(ja), Traditional Chinese(zh-rTW), Korean(ko-rKR), and
   Russian(ru) are supported.
 - When localization is needed, use the `locale-tui-localization` skill for managing string resources.
+
+## Fork Workflow
+
+This repository is a downstream fork of `rikkahub/rikkahub`. **Do not commit on `master`** —
+all development happens on the `custom` branch. See `FORK.md` for the full branch strategy,
+sync procedure, and conflict-minimization guidelines.
