@@ -198,8 +198,12 @@ dependencies {
     // okhttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
+    implementation(libs.okhttp.logging)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization.json)
+
+    // jsoup
+    implementation(libs.jsoup)
 
     // ktor client
     implementation(libs.ktor.client.core)
@@ -243,6 +247,10 @@ dependencies {
 
     // Apache Commons Text
     implementation(libs.commons.text)
+
+    // FloatingX
+    implementation("io.github.petterpx:floatingx:2.3.7")
+    implementation("io.github.petterpx:floatingx-compose:2.3.7")
 
     // Toast (Sonner)
     implementation(libs.sonner)

@@ -5,15 +5,17 @@ plugins {
 val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
 val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
 
+val hasZsh = providers.exec {
+    commandLine("which", "zsh")
+    isIgnoreExitValue = true
+}.result.map { it.exitValue == 0 }
+
 val buildWebUi = tasks.register<Exec>("buildWebUi") {
     group = "build"
     description = "Build web-ui and copy its static output into the web module resources."
 
     workingDir = webUiDir.asFile
-    val hasZsh = runCatching {
-        ProcessBuilder("which", "zsh").start().waitFor() == 0
-    }.getOrDefault(false)
-    if (hasZsh) {
+    if (hasZsh.get()) {
         commandLine("zsh", "-ic", "pnpm run build")
     } else {
         commandLine("pnpm", "run", "build")

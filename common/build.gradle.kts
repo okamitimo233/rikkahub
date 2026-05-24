@@ -39,20 +39,19 @@ dependencies {
     // okhttp
     api(libs.okhttp)
     api(libs.okhttp.sse)
-    api(libs.okhttp.logging)
+    implementation(libs.okhttp.logging)
 
     // kotlinx
     api(libs.kotlinx.serialization.json)
     api(libs.kotlinx.coroutines.core)
-    api(libs.kotlinx.datetime)
 
     // apache commons
-    api(libs.commons.text)
+    implementation(libs.commons.text)
 
     // floating
     // https://github.com/Petterpx/FloatingX
-    api("io.github.petterpx:floatingx:2.3.7")
-    api("io.github.petterpx:floatingx-compose:2.3.7")
+    implementation("io.github.petterpx:floatingx:2.3.7")
+    implementation("io.github.petterpx:floatingx-compose:2.3.7")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
