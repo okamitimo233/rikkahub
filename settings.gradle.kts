@@ -8,6 +8,13 @@ pluginManagement {
             }
         }
         mavenCentral()
+        maven("https://maven.aliyun.com/repository/central") {
+            content {
+                excludeGroupByRegex("dev\\..*")
+            }
+        }
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/gradle-plugin")
         gradlePluginPortal()
         maven("https://repo.itextsupport.com/android")
     }
@@ -26,6 +33,13 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        maven("https://maven.aliyun.com/repository/central") {
+            content {
+                excludeGroupByRegex("dev\\..*")
+            }
+        }
+        maven("https://maven.aliyun.com/repository/google")
+        maven("https://maven.aliyun.com/repository/jcenter")
         mavenCentral()
         maven("https://jitpack.io")
         mavenLocal()
