@@ -1,0 +1,5 @@
+{"file": "FORK.md", "reason": "验证分支策略是否正确执行，force-push 是否使用 --force-with-lease"}
+{"file": "CLAUDE.md", "reason": "验证构建系统配置、模块完整性、签名配置是否保留"}
+{"file": "prd.md", "reason": "验收标准清单，确认所有必须保留的定制都已应用"}
+{"file": "design.md", "reason": "风险检查清单、验证层次、成功标准"}
+{"file": "implement.md", "reason": "验证命令参考、回滚点检查"}

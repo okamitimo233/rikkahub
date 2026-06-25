@@ -16,3 +16,11 @@ local.properties
 .claude/worktrees/
 # Release keystore — never commit signing keys
 rikkahub-release.keystore
+
+# Trellis local/runtime files
+.trellis/.backup-*/
+.trellis/.runtime/
+
+# Python cache
+__pycache__/
+*.pyc

@@ -1,0 +1,6 @@
+{"file": "FORK.md", "reason": "Fork 分支策略、同步流程、冲突最小化指导原则"}
+{"file": "CLAUDE.md", "reason": "项目架构概览、构建系统、模块结构、签名配置说明"}
+{"file": ".trellis/spec/infra/index.md", "reason": "基础设施相关的规范，可能包含构建配置指导"}
+{"file": "prd.md", "reason": "当前任务的需求文档、决策记录、验收标准"}
+{"file": "design.md", "reason": "技术设计文档、风险分析、回滚策略"}
+{"file": "implement.md", "reason": "详细的实施步骤、验证命令、回滚点"}
