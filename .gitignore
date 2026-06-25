@@ -11,3 +11,8 @@ local.properties
 .cursor
 .history
 .kotlin
+.codegraph/
+.claude/settings.local.json
+.claude/worktrees/
+# Release keystore — never commit signing keys
+rikkahub-release.keystore
