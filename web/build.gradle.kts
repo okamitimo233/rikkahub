@@ -3,20 +3,25 @@ plugins {
 }
 
 val webUiDir = rootProject.layout.projectDirectory.dir("web-ui")
+val webUiBuildOutputDir = webUiDir.dir("build/client")
 val webStaticResourcesDir = layout.projectDirectory.dir("src/main/resources/static")
+
+val skipWebUiBuild = providers.gradleProperty("rikkahub.skipWebUiBuild")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
+    .get()
 
 val buildWebUi = tasks.register<Exec>("buildWebUi") {
     group = "build"
-    description = "Build web-ui and copy its static output into the web module resources."
+    description = "Build web-ui static output into build/client."
 
     workingDir = webUiDir.asFile
-    commandLine("zsh", "-ic", "pnpm run build")
+    commandLine("zsh", "-ic", "pnpm exec react-router build")
 
     inputs.files(
         webUiDir.file("package.json"),
         webUiDir.file("pnpm-lock.yaml"),
         webUiDir.file("components.json"),
-        webUiDir.file("copy.ts"),
         webUiDir.file("react-router.config.ts"),
         webUiDir.file("tsconfig.json"),
         webUiDir.file("vite.config.ts"),
@@ -24,17 +29,30 @@ val buildWebUi = tasks.register<Exec>("buildWebUi") {
     )
     inputs.dir(webUiDir.dir("app"))
     inputs.dir(webUiDir.dir("public"))
+
+    outputs.dir(webUiBuildOutputDir)
+}
+
+val copyWebUi = tasks.register<Exec>("copyWebUi") {
+    group = "build"
+    description = "Copy web-ui build output into the web module resources."
+
+    dependsOn(buildWebUi)
+
+    workingDir = webUiDir.asFile
+    commandLine("zsh", "-ic", "pnpm exec tsx copy.ts")
+
+    inputs.dir(webUiBuildOutputDir)
+    inputs.file(webUiDir.file("copy.ts"))
     outputs.dir(webStaticResourcesDir)
 }
 
 android {
     namespace = "me.rerere.rikkahub.web"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 26
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -50,13 +68,15 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 
-tasks.named("preBuild") {
-    dependsOn(buildWebUi)
+if (!skipWebUiBuild) {
+    tasks.named("preBuild") {
+        dependsOn(copyWebUi)
+    }
 }
 
 dependencies {

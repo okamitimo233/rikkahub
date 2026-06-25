@@ -27,8 +27,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("kotlin.uuid.ExperimentalUuidApi")
@@ -40,20 +40,19 @@ dependencies {
     // okhttp
     api(libs.okhttp)
     api(libs.okhttp.sse)
-    api(libs.okhttp.logging)
+    implementation(libs.okhttp.logging)
 
     // kotlinx
     api(libs.kotlinx.serialization.json)
     api(libs.kotlinx.coroutines.core)
-    api(libs.kotlinx.datetime)
 
     // apache commons
-    api(libs.commons.text)
+    implementation(libs.commons.text)
 
     // floating
     // https://github.com/Petterpx/FloatingX
-    api(libs.floatingx)
-    api(libs.floatingx.compose)
+    implementation(libs.floatingx)
+    implementation(libs.floatingx.compose)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

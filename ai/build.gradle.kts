@@ -33,8 +33,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
         compose = true
@@ -54,6 +54,9 @@ android {
 dependencies {
     implementation(project(":common"))
 
+    // Apache Commons Text (used by GoogleProvider)
+    implementation(libs.commons.text)
+
     // Compose
     implementation(libs.androidx.core.ktx)
     implementation(platform(libs.androidx.compose.bom))
@@ -62,7 +65,7 @@ dependencies {
     // okhttp
     api(libs.okhttp)
     api(libs.okhttp.sse)
-    api(libs.okhttp.logging)
+    implementation(libs.okhttp.logging)
 
     // kotlinx
     api(libs.kotlinx.serialization.json)

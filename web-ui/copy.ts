@@ -10,8 +10,15 @@ import { join, dirname } from "node:path";
 const SOURCE_DIR = "./build/client";
 const TARGET_DIR = "../web/src/main/resources/static";
 
+function removeRecursiveIfExists(path: string) {
+  try {
+    rmSync(path, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
 function copyDirectory(src: string, dest: string) {
-  // 确保目标目录存在
   mkdirSync(dest, { recursive: true });
 
   const entries = readdirSync(src, { withFileTypes: true });
@@ -23,9 +30,22 @@ function copyDirectory(src: string, dest: string) {
     if (entry.isDirectory()) {
       copyDirectory(srcPath, destPath);
     } else {
-      // 确保父目录存在
       mkdirSync(dirname(destPath), { recursive: true });
       copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function pruneRemoved(src: string, dest: string) {
+  const srcEntries = new Set(readdirSync(src, { withFileTypes: true }).map((e) => e.name));
+  const destEntries = readdirSync(dest, { withFileTypes: true });
+
+  for (const entry of destEntries) {
+    const destPath = join(dest, entry.name);
+    if (!srcEntries.has(entry.name)) {
+      removeRecursiveIfExists(destPath);
+    } else if (entry.isDirectory()) {
+      pruneRemoved(join(src, entry.name), destPath);
     }
   }
 }
@@ -35,7 +55,6 @@ try {
   console.log(`   Source: ${SOURCE_DIR}`);
   console.log(`   Target: ${TARGET_DIR}`);
 
-  // 检查源目录是否存在
   try {
     statSync(SOURCE_DIR);
   } catch {
@@ -44,15 +63,8 @@ try {
     process.exit(1);
   }
 
-  // 清理目标目录（如果存在）
-  try {
-    rmSync(TARGET_DIR, { recursive: true, force: true });
-    console.log("🧹 Cleaned target directory");
-  } catch (err) {
-    // 目标目录不存在，忽略错误
-  }
-
-  // 复制文件
+  mkdirSync(TARGET_DIR, { recursive: true });
+  pruneRemoved(SOURCE_DIR, TARGET_DIR);
   copyDirectory(SOURCE_DIR, TARGET_DIR);
 
   console.log("✅ Build output copied successfully!");

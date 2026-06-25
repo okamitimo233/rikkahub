@@ -14,8 +14,8 @@ android {
         consumerProguardFiles("consumer-rules.pro")
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
         compose = true
@@ -28,6 +28,8 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.material3)
 }
