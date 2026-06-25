@@ -9,8 +9,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.baselineprofile)
 }
 
@@ -27,9 +25,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
-        }
     }
 
     splits {
@@ -39,8 +34,8 @@ android {
             val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
             isEnable = !isBuildingBundle
             reset()
-            include("arm64-v8a", "x86_64")
-            isUniversalApk = true
+            include("arm64-v8a")
+            isUniversalApk = false
         }
     }
 
@@ -169,11 +164,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.material3.adaptive.navigation3)
 
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
-    implementation(libs.firebase.config)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
@@ -199,8 +189,12 @@ dependencies {
     // okhttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
+    implementation(libs.okhttp.logging)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization.json)
+
+    // jsoup
+    implementation(libs.jsoup)
 
     // ktor client
     implementation(libs.ktor.client.core)
@@ -248,6 +242,10 @@ dependencies {
 
     // Apache Commons Text
     implementation(libs.commons.text)
+
+    // FloatingX
+    implementation(libs.floatingx)
+    implementation(libs.floatingx.compose)
 
     // Toast (Sonner)
     implementation(libs.sonner)
