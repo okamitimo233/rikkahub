@@ -32,22 +32,16 @@ internal fun applyTimeReminder(messages: List<UIMessage>): List<UIMessage> {
     val result = mutableListOf<UIMessage>()
     val tz = TimeZone.currentSystemDefault()
 
-    var firstUserFound = false
     for (i in messages.indices) {
         val current = messages[i]
-        if (current.role == MessageRole.USER) {
+        if (current.role == MessageRole.USER && i > 0) {
             val currInstant = current.createdAt.toInstant(tz)
-            if (!firstUserFound) {
-                firstUserFound = true
-                result.add(buildTimeReminderMessage(null, currInstant))
-            } else {
-                val previous = messages[i - 1]
-                val prevInstant = previous.createdAt.toInstant(tz)
-                val gapSeconds = (currInstant - prevInstant).inWholeSeconds
+            val previous = messages[i - 1]
+            val prevInstant = previous.createdAt.toInstant(tz)
+            val gapSeconds = (currInstant - prevInstant).inWholeSeconds
 
-                if (gapSeconds > TIME_GAP_THRESHOLD_SECONDS) {
-                    result.add(buildTimeReminderMessage(gapSeconds, currInstant))
-                }
+            if (gapSeconds > TIME_GAP_THRESHOLD_SECONDS) {
+                result.add(buildTimeReminderMessage(gapSeconds, currInstant))
             }
         }
         result.add(current)
